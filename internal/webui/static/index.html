@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0c171b">
+  <title>Whalechime · Docker 알림</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <section id="login" class="login-shell">
+    <div class="login-card">
+      <img src="/icon.svg" alt="" width="64" height="64">
+      <p class="eyebrow">DOCKER EVENT NOTIFICATIONS</p>
+      <h1>Whalechime</h1>
+      <p class="muted">서버의 변화는 놓치지 않고,<br>필요한 소식은 원하는 곳으로.</p>
+      <form id="login-form">
+        <label for="token">접속 토큰</label>
+        <input id="token" name="token" type="password" required autocomplete="off" placeholder="관리자에게 발급받은 토큰">
+        <button class="primary" type="submit">시작하기 <span aria-hidden="true">→</span></button>
+      </form>
+      <p id="login-error" role="alert" class="error"></p>
+      <p class="small muted">토큰은 현재 탭에만 보관됩니다.</p>
+    </div>
+  </section>
+
+  <div id="app" class="app-shell" hidden>
+    <aside class="sidebar">
+      <a class="brand" href="#overview"><img src="/icon.svg" alt="" width="36" height="36">Whalechime</a>
+      <p class="nav-label">WORKSPACE</p>
+      <nav aria-label="주 메뉴">
+        <button data-view="overview" class="nav-item active"><span aria-hidden="true">◉</span><span>대시보드</span></button>
+        <button data-view="events" class="nav-item"><span aria-hidden="true">≋</span><span>이벤트 이력</span></button>
+        <button data-view="preferences" class="nav-item"><span aria-hidden="true">☷</span><span>수신 항목</span></button>
+        <button data-view="destinations" class="nav-item"><span aria-hidden="true">↗</span><span>내 수신처</span></button>
+        <button data-view="deliveries" class="nav-item"><span aria-hidden="true">✓</span><span>발송 이력</span></button>
+        <button data-view="admin" class="nav-item" id="admin-nav" hidden><span aria-hidden="true">⚙</span><span>관리</span></button>
+      </nav>
+      <div class="sidebar-footer"><span id="user-name"></span><button id="logout" class="text-button">로그아웃</button></div>
+    </aside>
+    <main>
+      <header class="topbar"><span class="small muted">나의 알림 워크스페이스</span><div class="actions topbar-actions"><span class="status-pill">● 연결됨</span><button id="logout-mobile" class="text-button mobile-only">로그아웃</button></div></header>
+      <div class="content">
+        <div class="page-heading"><div><p class="eyebrow" id="page-kicker">AT A GLANCE</p><h1 id="page-title">대시보드</h1><p class="muted" id="page-description"></p></div><button id="refresh" class="secondary">↻ 새로고침</button></div>
+        <p id="page-error" class="error" role="alert"></p>
+        <section id="view-overview" class="view"></section>
+        <section id="view-events" class="view" hidden>
+          <div class="filter-bar"><label>서버<select id="event-server" aria-label="서버"><option value="">전체 서버</option></select></label><label>이벤트<select id="event-key" aria-label="이벤트"><option value="">전체 이벤트</option></select></label><button id="filter-events" class="secondary">조회</button></div>
+          <div id="event-list"></div>
+        </section>
+        <section id="view-preferences" class="view" hidden>
+          <div class="panel preference-default"><div><h2>미지정 항목도 받기</h2><p class="muted small">개별 설정이 없는 항목과 새로 발견되는 이벤트의 기본 수신 여부입니다.</p></div><label class="switch"><input type="checkbox" id="default-enabled"><span></span><span class="sr-only">미지정 항목도 받기</span></label></div>
+          <div class="filter-bar"><label class="grow">항목 검색<input id="preference-search" type="search" placeholder="image.pull, container.stop…"></label><button id="all-on" class="secondary">전체 켜기</button><button id="all-off" class="secondary">전체 끄기</button></div>
+          <div id="preference-groups"></div>
+          <div class="sticky-actions"><span class="small muted">수신 항목은 활성화한 모든 수신처에 공통 적용됩니다.</span><button id="save-preferences" class="primary">설정 저장</button></div>
+        </section>
+        <section id="view-destinations" class="view" hidden>
+          <div id="destination-list" class="card-grid"></div>
+          <form id="destination-form" class="panel form-panel">
+            <h2 id="destination-form-title">수신처 추가</h2>
+            <div class="form-grid"><label>수신처 이름<input id="destination-name" maxlength="100" required placeholder="개인 Telegram"></label><label>알림 서비스<select id="destination-kind" aria-label="알림 서비스"></select></label></div>
+            <div id="destination-fields" class="form-grid"></div>
+            <label class="checkbox-label"><input type="checkbox" id="destination-enabled" checked> 이 수신처로 알림 받기</label>
+            <p class="small muted">연결 정보는 암호화해 보관합니다. 수정할 때는 연결 정보를 다시 입력하세요.</p>
+            <div class="actions"><button type="submit" class="primary">수신처 저장</button><button type="button" id="cancel-destination" class="secondary" hidden>수정 취소</button></div>
+          </form>
+        </section>
+        <section id="view-deliveries" class="view" hidden><div id="delivery-list"></div></section>
+        <section id="view-admin" class="view" hidden>
+          <div class="two-columns">
+            <form id="user-form" class="panel"><h2>사용자 등록</h2><label>사용자 이름<input id="new-user-name" required maxlength="100"></label><button class="primary" type="submit">계정 발급</button></form>
+            <form id="server-form" class="panel"><h2>감시 서버 등록</h2><label>서버 이름<input id="new-server-name" required maxlength="100" placeholder="production-01"></label><button class="primary" type="submit">서버 등록</button></form>
+          </div>
+          <div id="issued-token" class="panel token-panel" hidden><h2>발급한 접속 정보</h2><p class="small muted">토큰은 이 화면을 떠나면 다시 확인할 수 없습니다. 발급받은 사용자 또는 에이전트에 전달하세요.</p><pre id="issued-token-value"></pre><button id="copy-token" class="secondary">복사</button><button id="hide-token" class="secondary">닫기</button></div>
+          <div class="panel"><h2>서버 관련 사용자·팀</h2><label>감시 서버<select id="membership-server" aria-label="감시 서버"></select></label><p class="small muted">직접 연결한 사용자와 담당 팀 구성원 모두 이 서버에 접근하고 개인 설정에 따라 알림을 받습니다.</p><div id="membership-list" class="membership-list"></div><h2 class="section-heading">담당 팀</h2><div id="server-team-list" class="membership-list"></div></div>
+          <div class="panel"><h2>팀 관리</h2><form id="team-form" class="filter-bar"><label class="grow">새 팀 이름<input id="new-team-name" maxlength="100" required placeholder="운영팀"></label><button class="primary" type="submit">팀 등록</button></form><div class="filter-bar"><label class="grow">팀 선택<select id="team-select" aria-label="팀 선택"></select></label><button id="delete-team" class="secondary danger" type="button">선택 팀 삭제</button></div><div id="team-member-list" class="membership-list"></div></div>
+          <div class="panel"><h2>등록된 사용자</h2><div id="admin-users"></div></div>
+        </section>
+      </div>
+    </main>
+  </div>
+  <div id="toast" role="status" class="toast" hidden></div>
+</body>
+</html>

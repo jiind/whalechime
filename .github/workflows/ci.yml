@@ -1,0 +1,96 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: whalechime
+          POSTGRES_PASSWORD: ci-test-only
+          POSTGRES_DB: whalechime
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U whalechime -d whalechime"
+          --health-interval 5s --health-timeout 3s --health-retries 12
+    env:
+      WHALECHIME_TEST_DATABASE_URL: postgres://whalechime:ci-test-only@127.0.0.1:5432/whalechime?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: |
+            go.sum
+            desktop/go.sum
+      - run: test -z "$(gofmt -l cmd internal desktop)"
+      - run: go vet ./...
+      - run: go test -race -count=1 ./...
+      - run: go build ./cmd/whalechime ./cmd/whalechime-agent
+      - run: go vet ./... && go test -race ./...
+        working-directory: desktop
+      - run: WHALECHIME_NATIVE_TRAY_TEST=1 dbus-run-session -- go test -race -run TestNativeTrayHierarchy -v
+        working-directory: desktop
+      - run: GOOS=windows CGO_ENABLED=0 go build -o /tmp/whalechime-tray.exe .
+        working-directory: desktop
+
+  browser:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: whalechime
+          POSTGRES_PASSWORD: ci-test-only
+          POSTGRES_DB: whalechime
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U whalechime -d whalechime"
+          --health-interval 5s --health-timeout 3s --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: 로컬 테스트 서버 실행
+        env:
+          DATABASE_URL: postgres://whalechime:ci-test-only@127.0.0.1:5432/whalechime?sslmode=disable
+          WHALECHIME_ADMIN_TOKEN: whalechime-ci-test-admin-token-only
+          WHALECHIME_ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          WHALECHIME_LISTEN_ADDR: 127.0.0.1:18086
+          WHALECHIME_ALLOWED_NOTIFICATION_HOSTS: 127.0.0.1
+        run: |
+          go build -o /tmp/whalechime ./cmd/whalechime
+          /tmp/whalechime > /tmp/whalechime.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            if /tmp/whalechime -healthcheck http://127.0.0.1:18086/readyz; then
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1
+      - run: npm run test:ui
+        env:
+          WHALECHIME_TEST_ADMIN_TOKEN: whalechime-ci-test-admin-token-only
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-failure
+          path: test-results/
+          retention-days: 3

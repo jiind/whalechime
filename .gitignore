@@ -28,6 +28,15 @@ go.work.sum
 # env file
 .env
 
+# 로컬 실행 설정·토큰·에이전트 데이터
+.local/
+bin/
+data/
+node_modules/
+playwright-report/
+test-results/
+.playwright-cli/
+
 # Editor/IDE
 # .idea/
 # .vscode/

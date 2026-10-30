@@ -1,0 +1,42 @@
+# 호스트의 권한을 변경하지 않고 기존 실행 계정과 Docker 소켓 그룹을 사용한다.
+name: whalechime-agent
+
+services:
+  agent:
+    image: whalechime-agent:local
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: agent
+    user: "${WHALECHIME_AGENT_UID:?설정 파일을 먼저 생성하세요}:${WHALECHIME_AGENT_GID:?설정 파일을 먼저 생성하세요}"
+    group_add:
+      - "${WHALECHIME_DOCKER_GID:?Docker 소켓 그룹이 필요합니다}"
+    environment:
+      DOCKER_HOST: unix:///var/run/docker.sock
+      WHALECHIME_SERVER_URL: "${WHALECHIME_SERVER_URL:?중앙 서버 주소가 필요합니다}"
+      WHALECHIME_AGENT_TOKEN_FILE: /run/secrets/agent_token
+      WHALECHIME_AGENT_DATA_DIR: /data
+    secrets:
+      - agent_token
+    volumes:
+      - type: bind
+        source: "${WHALECHIME_DOCKER_SOCKET:?Docker 소켓 경로가 필요합니다}"
+        target: /var/run/docker.sock
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: "${WHALECHIME_AGENT_DATA_DIR:?에이전트 데이터 경로가 필요합니다}"
+        target: /data
+        bind:
+          create_host_path: false
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+secrets:
+  agent_token:
+    file: "${WHALECHIME_AGENT_TOKEN_PATH:?에이전트 토큰 파일 경로가 필요합니다}"
