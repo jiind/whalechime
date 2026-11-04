@@ -1,12 +1,13 @@
 "use strict";
 
 const $ = (selector) => document.querySelector(selector);
-const state = { token: sessionStorage.getItem("whalechime-token") || "", user: null, view: "overview", preferences: new Map(), keys: [], defaultEnabled: false, destinations: [], editID: null, users: [], servers: [], teams: [] };
-const labels = { email: "이메일", slack: "Slack", teams: "Microsoft Teams", discord: "Discord", telegram: "Telegram", "google-chat": "Google Chat", mattermost: "Mattermost", ntfy: "ntfy", gotify: "Gotify", pushover: "Pushover", webhook: "사용자 정의 Webhook" };
+const state = { view: "overview", preferences: new Map(), keys: [], defaultEnabled: false, destinations: [], editID: null, servers: [], serverEditID: null };
+const labels = { desktop: "이 PC 알림", email: "이메일", slack: "Slack", teams: "Microsoft Teams", discord: "Discord", telegram: "Telegram", "google-chat": "Google Chat", mattermost: "Mattermost", ntfy: "ntfy", gotify: "Gotify", pushover: "Pushover", webhook: "사용자 정의 Webhook" };
 const groupLabels = { container: "컨테이너", image: "이미지", network: "네트워크", volume: "볼륨", daemon: "Docker 데몬", plugin: "플러그인", service: "Swarm 서비스", node: "Swarm 노드", secret: "시크릿", config: "설정", server: "서버 연결" };
 const statusLabels = { sent: "발송 완료", pending: "재시도 대기", processing: "발송 중", failed: "발송 실패", cancelled: "발송 취소" };
-const pages = { overview: ["AT A GLANCE", "대시보드", "연결된 서버와 최근 Docker 이벤트를 확인하세요."], events: ["ACTIVITY", "이벤트 이력", "수신 설정과 관계없이 수집한 이벤트를 기록합니다. 최근 100건을 표시합니다."], preferences: ["YOUR PREFERENCES", "수신 항목", "어떤 소식을 받을지 직접 선택하세요."], destinations: ["YOUR CONNECTIONS", "내 수신처", "알림을 받을 곳을 등록하세요. 활성 수신처 모두에 같은 알림을 보냅니다."], deliveries: ["DELIVERY LOG", "발송 이력", "내 수신처별 최근 발송 결과와 재시도를 확인하세요."], admin: ["ADMINISTRATION", "관리", "서버를 등록하고 관련 사용자를 연결하세요." ] };
+const pages = { overview: ["AT A GLANCE", "대시보드", "연결된 서버와 최근 Docker 이벤트를 확인하세요."], events: ["ACTIVITY", "이벤트 이력", "수신 설정과 관계없이 수집한 이벤트를 기록합니다. 최근 최대 500건을 표시합니다."], preferences: ["YOUR PREFERENCES", "수신 항목", "어떤 소식을 받을지 직접 선택하세요."], destinations: ["YOUR CONNECTIONS", "내 수신처", "알림을 받을 곳을 등록하세요. 활성 수신처 모두에 같은 알림을 보냅니다."], deliveries: ["DELIVERY LOG", "발송 이력", "내 수신처별 최근 발송 결과와 재시도를 확인하세요."], servers: ["CONNECTIONS", "서버 연결", "Docker API 또는 기존 SSH 연결로 서버를 추가하세요." ] };
 const fields = {
+ desktop: [],
   email: [["host", "SMTP 호스트"], ["port", "SMTP 포트", "number", "587"], ["username", "SMTP 사용자 이름", "text", "", false], ["password", "SMTP 비밀번호", "password", "", false], ["from", "발신 이메일", "email"], ["to", "수신 이메일", "email"]],
   telegram: [["token", "Bot 토큰", "password"], ["chat_id", "채팅 ID"]],
   pushover: [["token", "애플리케이션 토큰", "password"], ["user_key", "사용자 키", "password"]],
@@ -27,10 +28,10 @@ function element(tag, className, text) {
   return node;
 }
 
-// request는 현재 사용자 토큰으로 같은 서버의 API를 호출한다.
+// request는 현재 로컬 세션으로 앱 API를 호출한다.
 async function request(path, method = "GET", body) {
-  // 1. 토큰을 URL에 포함하지 않고 요청 헤더로만 전달한다.
-  const response = await fetch(path, { method, headers: { Authorization: `Bearer ${state.token}`, "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+  // 1. 브라우저가 관리하는 HttpOnly 쿠키로 인증한다.
+  const response = await fetch(path, { method, headers: { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
   const data = response.status === 204 ? null : await response.json();
 
   // 2. API가 제공한 사용자용 오류만 화면에 표시한다.
@@ -53,11 +54,7 @@ function on(target, event, action) {
     try {
       await action(e);
     } catch (error) {
-      if (!state.user) {
-        $("#login-error").textContent = error.message;
-      } else {
-        $("#page-error").textContent = error.message;
-      }
+      $("#page-error").textContent = error.message;
     } finally {
       if (button) {
         button.disabled = false;
@@ -77,56 +74,14 @@ function toast(message) {
   }, 4000);
 }
 
-// login은 토큰을 확인한 뒤 현재 탭에서만 인증 상태를 유지한다.
-async function login() {
-  // 1. 인증 성공 전에는 토큰을 브라우저 저장소에 기록하지 않는다.
-  state.user = await request("/api/me");
-  sessionStorage.setItem("whalechime-token", state.token);
-  $("#token").value = "";
-  $("#login").hidden = true;
-  $("#app").hidden = false;
-  $("#user-name").textContent = state.user.name;
-  $("#admin-nav").hidden = !state.user.is_admin;
-
-  // 2. 현재 계정으로 접근 가능한 첫 화면을 조회한다.
-  await navigate(pages[location.hash.slice(1)] ? location.hash.slice(1) : "overview");
-}
-
-// logout은 현재 탭의 토큰과 민감한 발급 정보를 지운다.
-function logout() {
-  sessionStorage.removeItem("whalechime-token");
-  state.token = "";
-  state.user = null;
-  state.preferences.clear();
-  state.keys = [];
-  state.destinations = [];
-  state.users = [];
-  state.servers = [];
-  state.teams = [];
-  state.editID = null;
-  $("#destination-form").reset();
-  $("#destination-fields").replaceChildren();
-  for (const id of ["view-overview", "event-list", "preference-groups", "destination-list", "delivery-list", "membership-list", "admin-users", "team-member-list", "server-team-list"]) {
-    document.getElementById(id).replaceChildren();
-  }
-  $("#issued-token-value").textContent = "";
-  $("#issued-token").hidden = true;
-  $("#app").hidden = true;
-  $("#login").hidden = false;
-  $("#login-error").textContent = "";
-  $("#token").focus();
-}
-
 // navigate는 화면을 전환하고 해당 업무의 최신 데이터를 불러온다.
 async function navigate(view) {
-  // 1. 관리자 메뉴와 일회성 발급 정보의 노출 범위를 확인한다.
-  if (!pages[view] || (view === "admin" && !state.user.is_admin)) {
+  // 1. 선택한 로컬 화면을 확인한다.
+  if (!pages[view]) {
     return;
   }
   state.view = view;
   history.replaceState(null, "", `#${view}`);
-  $("#issued-token-value").textContent = "";
-  $("#issued-token").hidden = true;
   $("#page-error").textContent = "";
   for (const node of document.querySelectorAll(".view")) {
     node.hidden = node.id !== `view-${view}`;
@@ -151,7 +106,7 @@ async function refresh() {
     case "preferences": return loadPreferences();
     case "destinations": return loadDestinations();
     case "deliveries": return loadDeliveries();
-    case "admin": return loadAdmin();
+    case "servers": return loadServers();
   }
 }
 
@@ -197,7 +152,7 @@ function table(headers, rows) {
 function eventTable(items) {
   // 1. 최근 이벤트의 공통 필드를 표시한다.
   if (!items.length) {
-    return empty("아직 수집된 이벤트가 없습니다. 서버에 에이전트를 연결하면 변경 이력이 여기에 표시됩니다.");
+    return empty("아직 수집된 이벤트가 없습니다. 서버 연결을 추가하면 변경 이력이 여기에 표시됩니다.");
   }
   const node = table(["이벤트", "대상", "발생 시각", "상세"], items.map((item) => {
     const details = element("button", "secondary", "상세 보기");
@@ -234,7 +189,7 @@ async function overview() {
   const root = $("#view-overview");
   root.replaceChildren();
   const stats = element("div", "stats");
-  for (const [title, count, hint] of [["연결된 서버", servers.length, "나와 관련된 감시 서버"], ["활성 수신처", destinations.filter((d) => d.enabled).length, "알림이 도착하는 곳"], ["최근 이벤트", events.length, "최근 최대 8건"]]) {
+  for (const [title, count, hint] of [["연결된 서버", servers.length, "이 PC에 등록한 Docker 서버"], ["활성 수신처", destinations.filter((d) => d.enabled).length, "알림이 도착하는 곳"], ["최근 이벤트", events.length, "최근 수집 이력"]]) {
     const card = element("div", "stat");
     card.append(element("span", "muted small", title), element("strong", "", count), element("small", "", hint));
     stats.append(card);
@@ -243,9 +198,9 @@ async function overview() {
 
   // 2. 연결 상태와 최근 이벤트를 실제 조회 결과로 표시한다.
   if (servers.length) {
-    root.append(table(["서버", "연결 상태", "마지막 생존 신호"], servers.map((s) => [s.name, element("span", `badge ${!s.last_seen_at || Date.now() - new Date(s.last_seen_at) > 90000 ? "offline" : ""}`, !s.last_seen_at ? "연결 대기" : Date.now() - new Date(s.last_seen_at) > 90000 ? "연결 확인 필요" : "연결됨"), time(s.last_seen_at)])));
+    root.append(table(["서버", "연결 방식", "상태"], servers.map((s) => [s.name, s.address.startsWith("ssh:") ? "SSH" : s.address.startsWith("https:") ? (s.mtls ? "HTTPS · mTLS" : "HTTPS") : "HTTP", s.status])));
   } else {
-    root.append(empty("연결된 서버가 없습니다. 관리자에게 서버 연결을 요청하세요."));
+    root.append(empty("연결된 서버가 없습니다. 서버 연결 메뉴에서 첫 서버를 추가하세요."));
   }
   root.append(element("h2", "section-heading", "최근 Docker 이벤트"), eventTable(events));
 }
@@ -435,120 +390,9 @@ async function loadDeliveries() {
   $("#delivery-list").replaceChildren(items.length ? table(["수신처", "상태", "시도", "발송 시각", "오류"], items.map((item) => [item.destination_name, element("span", `badge ${item.status}`, statusLabels[item.status] || item.status), item.attempts, item.sent_at ? time(item.sent_at) : "—", item.last_error || "—"])) : empty("아직 발송 이력이 없습니다. 수신 항목과 수신처를 활성화하면 알림이 발송됩니다."));
 }
 
-// showToken은 발급 직후에만 복사 가능한 인증 정보를 표시한다.
-function showToken(value) {
-  $("#issued-token").hidden = false;
-  $("#issued-token-value").textContent = value;
-}
-
-// loadAdmin은 관리자 전용 계정·서버 목록과 연결 대상을 조회한다.
-async function loadAdmin() {
-  // 1. 계정과 서버 목록을 함께 조회한다.
-  [state.users, state.servers, state.teams] = await Promise.all([request("/api/admin/users"), request("/api/admin/servers"), request("/api/admin/teams")]);
-  options($("#membership-server"), state.servers.map((server) => [server.id, server.name]));
-  options($("#team-select"), state.teams.map((team) => [team.id, team.name]));
-  const root = $("#admin-users");
-  const rows = state.users.map((user) => {
-    const rotate = element("button", "secondary", "토큰 재발급");
-    rotate.disabled = user.is_admin;
-    on(rotate, "click", async () => {
-      if (!confirm(`${user.name} 사용자의 이전 토큰이 폐기됩니다. 재발급할까요?`)) {
-        return;
-      }
-      const result = await request(`/api/admin/users/${user.id}/token`, "POST", {});
-      showToken(result.token);
-    });
-    return [user.name, user.is_admin ? "관리자" : "사용자", rotate];
-  });
-  root.replaceChildren(table(["이름", "역할", "접속 토큰"], rows));
-
-  // 2. 현재 선택 서버의 사용자 연결 상태를 표시한다.
-  await loadMembers();
-  await loadTeamMembers();
-}
-
-// loadMembers는 선택 서버와 각 사용자의 연결을 개별적으로 변경하게 한다.
-async function loadMembers() {
-  const serverID = $("#membership-server").value;
-  const root = $("#membership-list");
-  root.replaceChildren();
-  $("#server-team-list").replaceChildren();
-  if (!serverID) {
-    root.append(element("p", "muted", "먼저 감시 서버를 등록하세요."));
-    return;
-  }
-  const members = new Set((await request(`/api/admin/servers/${serverID}/members`)).map((user) => user.id));
-  for (const user of state.users) {
-    const label = element("label", "checkbox-label");
-    const check = element("input");
-    check.type = "checkbox";
-    check.checked = members.has(user.id);
-    on(check, "change", async () => {
-      const enabled = check.checked;
-      try {
-        await request(`/api/admin/servers/${serverID}/members/${user.id}`, "PUT", { enabled });
-        toast("서버 관련 사용자를 변경했습니다.");
-      } catch (error) {
-        check.checked = !enabled;
-        throw error;
-      }
-    });
-    label.append(check, document.createTextNode(user.name));
-    root.append(label);
-  }
-  const linkedTeams = new Set((await request(`/api/admin/servers/${serverID}/teams`)).map((team) => team.id));
-  renderLinks($("#server-team-list"), state.teams, linkedTeams, (team) => `/api/admin/servers/${serverID}/teams/${team.id}`);
-  if (!state.teams.length) {
-    $("#server-team-list").append(element("p", "muted small", "아래에서 팀을 등록할 수 있습니다."));
-  }
-}
-
-// renderLinks는 연결 목록의 변경 실패를 되돌리며 서버·팀 권한을 설정한다.
-function renderLinks(root, items, linked, path) {
-  root.replaceChildren();
-  for (const item of items) {
-    const label = element("label", "checkbox-label");
-    const check = element("input");
-    check.type = "checkbox";
-    check.checked = linked.has(item.id);
-    on(check, "change", async () => {
-      const enabled = check.checked;
-      try {
-        await request(path(item), "PUT", { enabled });
-        toast("연결 설정을 변경했습니다.");
-      } catch (error) {
-        check.checked = !enabled;
-        throw error;
-      }
-    });
-    label.append(check, document.createTextNode(item.name));
-    root.append(label);
-  }
-}
-
-// loadTeamMembers는 선택한 팀의 구성원을 직접 관리하게 한다.
-async function loadTeamMembers() {
-  const teamID = $("#team-select").value;
-  const root = $("#team-member-list");
-  root.replaceChildren();
-  $("#delete-team").disabled = !teamID;
-  if (!teamID) {
-    root.append(element("p", "muted small", "등록된 팀이 없습니다."));
-    return;
-  }
-  const linked = new Set((await request(`/api/admin/teams/${teamID}/members`)).map((user) => user.id));
-  renderLinks(root, state.users, linked, (user) => `/api/admin/teams/${teamID}/members/${user.id}`);
-}
-
 // bind는 화면 조작을 API 업무 흐름에 연결한다.
 function bind() {
   // 1. 접속과 화면 이동을 연결한다.
-  on("#login-form", "submit", async () => {
-    state.token = $("#token").value.trim();
-    await login();
-  });
-  on("#logout", "click", logout);
-  on("#logout-mobile", "click", logout);
   on("#refresh", "click", refresh);
   for (const node of document.querySelectorAll("[data-view]")) {
     on(node, "click", () => navigate(node.dataset.view));
@@ -580,63 +424,116 @@ function bind() {
     toast("수신처를 저장했습니다.");
   });
 
-  // 3. 관리자의 계정 발급과 서버 연결을 처리한다.
-  on("#user-form", "submit", async () => {
-    const result = await request("/api/admin/users", "POST", { name: $("#new-user-name").value.trim() });
-    await loadAdmin();
-    showToken(`${result.user.name}\n${result.token}`);
-    $("#user-form").reset();
-    toast("사용자 계정을 발급했습니다.");
+  // 3. 연결 방식에 필요한 인증 설정만 저장한다.
+  on("#server-transport", "change", () => {
+    const ssh = $("#server-transport").value === "ssh";
+    $("#server-address").value = ssh ? "ssh://" : "http://";
+    connectionFields();
   });
+  on("#server-address", "input", connectionFields);
+  on("#server-mtls", "change", connectionFields);
+  on("#cancel-server", "click", resetServer);
   on("#server-form", "submit", async () => {
-    const result = await request("/api/admin/servers", "POST", { name: $("#new-server-name").value.trim() });
-    await loadAdmin();
-    $("#membership-server").value = result.server.id;
-    await loadMembers();
-    showToken(`${result.server.name}\nWHALECHIME_AGENT_TOKEN=${result.token}`);
-    $("#server-form").reset();
-    toast("감시 서버를 등록했습니다.");
-  });
-  on("#membership-server", "change", loadMembers);
-  on("#team-select", "change", loadTeamMembers);
-  on("#team-form", "submit", async () => {
-    const team = await request("/api/admin/teams", "POST", { name: $("#new-team-name").value.trim() });
-    await loadAdmin();
-    $("#team-select").value = team.id;
-    await loadTeamMembers();
-    $("#team-form").reset();
-    toast("팀을 등록했습니다.");
-  });
-  on("#delete-team", "click", async () => {
-    const id = $("#team-select").value;
-    if (!id || !confirm("팀과 팀을 통한 모든 서버 연결을 삭제할까요?")) {
-      return;
-    }
-    await request(`/api/admin/teams/${id}`, "DELETE");
-    await loadAdmin();
-    toast("팀을 삭제했습니다.");
-  });
-  on("#copy-token", "click", async () => {
-    await navigator.clipboard.writeText($("#issued-token-value").textContent);
-    toast("접속 정보를 복사했습니다.");
-  });
-  on("#hide-token", "click", () => {
-    $("#issued-token-value").textContent = "";
-    $("#issued-token").hidden = true;
+    const value = serverInput();
+    await request(state.serverEditID ? `/api/servers/${state.serverEditID}` : "/api/servers", state.serverEditID ? "PUT" : "POST", value);
+    resetServer();
+    await loadServers();
+    toast("서버 연결을 저장했습니다.");
   });
 }
 
-bind();
-window.addEventListener("hashchange", () => {
-  if (state.user) {
-    navigate(location.hash.slice(1)).catch((error) => {
-      $("#page-error").textContent = error.message;
-    });
-  }
-});
-if (state.token) {
-  login().catch(() => {
-    logout();
-    $("#login-error").textContent = "다시 로그인해 주세요.";
-  });
+// connectionFields는 주소에 해당하는 TLS·mTLS·SSH 입력만 표시한다.
+function connectionFields() {
+  const ssh = $("#server-transport").value === "ssh";
+  const tls = !ssh && $("#server-address").value.startsWith("https://");
+  $("#tls-fields").hidden = !tls;
+  $("#ssh-fields").hidden = !ssh;
+  $("#mtls-fields").hidden = !tls || !$("#server-mtls").checked;
+  $("#server-cert").required = tls && $("#server-mtls").checked;
+  $("#server-key").required = tls && $("#server-mtls").checked;
+  $("#connection-note").textContent = ssh ? "기존 SSH 키·설정으로 연결합니다. 서버에 Docker 조회 권한이 필요합니다." : tls ? "서버 인증서를 검증하는 HTTPS 연결입니다." : "HTTP는 전송을 암호화하지 않습니다. 서버의 접근 허용 범위를 확인하세요.";
 }
+
+// serverInput은 선택한 연결 방식에 필요한 값만 요청으로 구성한다.
+function serverInput() {
+  const ssh = $("#server-transport").value === "ssh";
+  const address = $("#server-address").value.trim();
+  if ((ssh && !address.startsWith("ssh://")) || (!ssh && !/^https?:\/\//.test(address))) {
+    throw new Error("선택한 연결 방식과 서버 주소를 맞춰주세요.");
+  }
+  const tls = !ssh && address.startsWith("https://");
+  const mtls = tls && $("#server-mtls").checked;
+  return { name: $("#server-name").value.trim(), address, enabled: $("#server-enabled").checked, mtls, ca_file: tls ? $("#server-ca").value.trim() : "", cert_file: mtls ? $("#server-cert").value.trim() : "", key_file: mtls ? $("#server-key").value.trim() : "", identity_file: ssh ? $("#server-identity").value.trim() : "" };
+}
+
+// resetServer는 이전 인증서 경로를 새 서버에 복사하지 않도록 폼을 초기화한다.
+function resetServer() {
+  state.serverEditID = null;
+  $("#server-form").reset();
+  $("#server-form-title").textContent = "서버 연결 추가";
+  $("#cancel-server").hidden = true;
+  connectionFields();
+}
+
+// loadServers는 저장한 연결과 상태를 표시하고 로컬 연결만 수정·삭제한다.
+async function loadServers() {
+  // 1. 서버 주소·연결 방식·수집 상태를 구분해 표시한다.
+  state.servers = await request("/api/servers");
+  const root = $("#server-list");
+  root.replaceChildren();
+  for (const s of state.servers) {
+    const card = element("article", "panel server-card");
+    card.append(element("h2", "", s.name), element("p", "small", s.address), element("p", "muted small", s.status));
+    const actions = element("div", "actions");
+    const test = element("button", "secondary", "연결 확인");
+    on(test, "click", async () => {
+      await request(`/api/servers/${s.id}/test`, "POST", {});
+      toast("Docker 연결을 확인했습니다.");
+    });
+    const edit = element("button", "secondary", "연결 수정");
+    on(edit, "click", () => {
+      state.serverEditID = s.id;
+      $("#server-form-title").textContent = "서버 연결 수정";
+      $("#server-name").value = s.name;
+      $("#server-address").value = s.address;
+      $("#server-transport").value = s.address.startsWith("ssh:") ? "ssh" : "api";
+      $("#server-enabled").checked = s.enabled;
+      $("#server-mtls").checked = s.mtls;
+      for (const [id, key] of [["server-ca", "ca_file"], ["server-cert", "cert_file"], ["server-key", "key_file"], ["server-identity", "identity_file"]]) {
+        document.getElementById(id).value = s[key] || "";
+      }
+      $("#cancel-server").hidden = false;
+      connectionFields();
+      $("#server-name").focus();
+    });
+    const remove = element("button", "secondary danger", "연결 삭제");
+    on(remove, "click", async () => {
+      if (!confirm(`'${s.name}' 연결을 삭제할까요? Docker의 컨테이너는 변경하지 않습니다.`)) {
+        return;
+      }
+      await request(`/api/servers/${s.id}`, "DELETE");
+      resetServer();
+      await loadServers();
+      toast("서버 연결을 삭제했습니다.");
+    });
+    actions.append(test, edit, remove);
+    card.append(actions);
+    root.append(card);
+  }
+
+  // 2. 처음 실행한 사용자에게 바로 연결을 추가하도록 안내한다.
+  if (!state.servers.length) {
+    root.append(empty("등록된 서버가 없습니다. 아래에서 Docker API 또는 SSH 연결을 추가하세요."));
+  }
+}
+
+bind();
+connectionFields();
+window.addEventListener("hashchange", () => {
+  navigate(location.hash.slice(1)).catch((error) => {
+    $("#page-error").textContent = error.message;
+  });
+});
+navigate(pages[location.hash.slice(1)] ? location.hash.slice(1) : "overview").catch((error) => {
+  $("#page-error").textContent = error.message;
+});

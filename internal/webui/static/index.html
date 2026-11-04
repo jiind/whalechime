@@ -10,23 +10,7 @@
   <script src="/app.js" defer></script>
 </head>
 <body>
-  <section id="login" class="login-shell">
-    <div class="login-card">
-      <img src="/icon.svg" alt="" width="64" height="64">
-      <p class="eyebrow">DOCKER EVENT NOTIFICATIONS</p>
-      <h1>Whalechime</h1>
-      <p class="muted">서버의 변화는 놓치지 않고,<br>필요한 소식은 원하는 곳으로.</p>
-      <form id="login-form">
-        <label for="token">접속 토큰</label>
-        <input id="token" name="token" type="password" required autocomplete="off" placeholder="관리자에게 발급받은 토큰">
-        <button class="primary" type="submit">시작하기 <span aria-hidden="true">→</span></button>
-      </form>
-      <p id="login-error" role="alert" class="error"></p>
-      <p class="small muted">토큰은 현재 탭에만 보관됩니다.</p>
-    </div>
-  </section>
-
-  <div id="app" class="app-shell" hidden>
+  <div id="app" class="app-shell">
     <aside class="sidebar">
       <a class="brand" href="#overview"><img src="/icon.svg" alt="" width="36" height="36">Whalechime</a>
       <p class="nav-label">WORKSPACE</p>
@@ -36,12 +20,12 @@
         <button data-view="preferences" class="nav-item"><span aria-hidden="true">☷</span><span>수신 항목</span></button>
         <button data-view="destinations" class="nav-item"><span aria-hidden="true">↗</span><span>내 수신처</span></button>
         <button data-view="deliveries" class="nav-item"><span aria-hidden="true">✓</span><span>발송 이력</span></button>
-        <button data-view="admin" class="nav-item" id="admin-nav" hidden><span aria-hidden="true">⚙</span><span>관리</span></button>
+        <button data-view="servers" class="nav-item"><span aria-hidden="true">⚙</span><span>서버 연결</span></button>
       </nav>
-      <div class="sidebar-footer"><span id="user-name"></span><button id="logout" class="text-button">로그아웃</button></div>
+      <div class="sidebar-footer"><span>이 PC에서 감시 중<br>앱 종료·절전 중에는 수집이 중단됩니다.</span></div>
     </aside>
     <main>
-      <header class="topbar"><span class="small muted">나의 알림 워크스페이스</span><div class="actions topbar-actions"><span class="status-pill">● 연결됨</span><button id="logout-mobile" class="text-button mobile-only">로그아웃</button></div></header>
+      <header class="topbar"><span class="small muted">나의 Docker 모니터</span><span class="status-pill">● 로컬 앱</span></header>
       <div class="content">
         <div class="page-heading"><div><p class="eyebrow" id="page-kicker">AT A GLANCE</p><h1 id="page-title">대시보드</h1><p class="muted" id="page-description"></p></div><button id="refresh" class="secondary">↻ 새로고침</button></div>
         <p id="page-error" class="error" role="alert"></p>
@@ -68,15 +52,32 @@
           </form>
         </section>
         <section id="view-deliveries" class="view" hidden><div id="delivery-list"></div></section>
-        <section id="view-admin" class="view" hidden>
-          <div class="two-columns">
-            <form id="user-form" class="panel"><h2>사용자 등록</h2><label>사용자 이름<input id="new-user-name" required maxlength="100"></label><button class="primary" type="submit">계정 발급</button></form>
-            <form id="server-form" class="panel"><h2>감시 서버 등록</h2><label>서버 이름<input id="new-server-name" required maxlength="100" placeholder="production-01"></label><button class="primary" type="submit">서버 등록</button></form>
-          </div>
-          <div id="issued-token" class="panel token-panel" hidden><h2>발급한 접속 정보</h2><p class="small muted">토큰은 이 화면을 떠나면 다시 확인할 수 없습니다. 발급받은 사용자 또는 에이전트에 전달하세요.</p><pre id="issued-token-value"></pre><button id="copy-token" class="secondary">복사</button><button id="hide-token" class="secondary">닫기</button></div>
-          <div class="panel"><h2>서버 관련 사용자·팀</h2><label>감시 서버<select id="membership-server" aria-label="감시 서버"></select></label><p class="small muted">직접 연결한 사용자와 담당 팀 구성원 모두 이 서버에 접근하고 개인 설정에 따라 알림을 받습니다.</p><div id="membership-list" class="membership-list"></div><h2 class="section-heading">담당 팀</h2><div id="server-team-list" class="membership-list"></div></div>
-          <div class="panel"><h2>팀 관리</h2><form id="team-form" class="filter-bar"><label class="grow">새 팀 이름<input id="new-team-name" maxlength="100" required placeholder="운영팀"></label><button class="primary" type="submit">팀 등록</button></form><div class="filter-bar"><label class="grow">팀 선택<select id="team-select" aria-label="팀 선택"></select></label><button id="delete-team" class="secondary danger" type="button">선택 팀 삭제</button></div><div id="team-member-list" class="membership-list"></div></div>
-          <div class="panel"><h2>등록된 사용자</h2><div id="admin-users"></div></div>
+        <section id="view-servers" class="view" hidden>
+          <div id="server-list" class="card-grid"></div>
+          <form id="server-form" class="panel form-panel">
+            <h2 id="server-form-title">서버 연결 추가</h2>
+            <div class="form-grid">
+              <label>서버 이름<input id="server-name" required maxlength="100" placeholder="production-01"></label>
+              <label>연결 방식<select id="server-transport" aria-label="연결 방식"><option value="api">Docker API</option><option value="ssh">SSH</option></select></label>
+              <label>서버 주소<input id="server-address" type="url" required placeholder="http://192.168.1.10:2375"></label>
+            </div>
+            <p id="connection-note" class="small muted">HTTP는 전송을 암호화하지 않습니다. 서버의 접근 허용 범위를 확인하세요.</p>
+            <div id="tls-fields" hidden>
+              <label>CA 인증서 파일 경로<input id="server-ca" placeholder="비워두면 시스템 인증서 사용"></label>
+              <p class="small muted">HTTPS 서버 인증서는 항상 검증합니다.</p>
+              <label class="checkbox-label"><input id="server-mtls" type="checkbox"> mTLS 사용</label>
+              <div id="mtls-fields" class="form-grid" hidden>
+                <label>클라이언트 인증서 파일 경로<input id="server-cert"></label>
+                <label>클라이언트 개인키 파일 경로<input id="server-key"></label>
+              </div>
+            </div>
+            <div id="ssh-fields" hidden>
+              <label>SSH 개인키 파일 경로<input id="server-identity" placeholder="선택 사항: 기존 SSH 설정과 에이전트 재사용"></label>
+              <p class="small muted">ssh://사용자@서버:포트 또는 ssh://SSH별칭을 사용합니다. 기존 known_hosts에 등록된 서버만 연결합니다.</p>
+            </div>
+            <label class="checkbox-label"><input id="server-enabled" type="checkbox" checked> 이 서버 감시하기</label>
+            <div class="actions"><button type="submit" class="primary">연결 저장</button><button id="cancel-server" type="button" class="secondary" hidden>수정 취소</button></div>
+          </form>
         </section>
       </div>
     </main>

@@ -1,55 +1,39 @@
-# 운영과 개발 설정
+# 데이터 보관과 운영
 
-## 중앙 서버 환경변수
-
-| 키 | 내용 |
-| --- | --- |
-| `DATABASE_URL` | PostgreSQL 연결 URL. 운영의 원격 DB는 TLS 연결을 설정한다. |
-| `WHALECHIME_ADMIN_TOKEN` | 32바이트 이상인 초기 관리자 토큰. 시작 시 해당 계정 토큰을 갱신한다. |
-| `WHALECHIME_ENCRYPTION_KEY` | 32바이트를 Base64로 인코딩한 고정 키. 수신처 자격 증명 암호화에 사용한다. |
-| `WHALECHIME_LISTEN_ADDR` | 기본 `:8080`. 직접 실행 시 `127.0.0.1:8080`처럼 제한할 수 있다. |
-| `WHALECHIME_ALLOWED_NOTIFICATION_HOSTS` | 사설 알림 연동을 허용할 호스트/IP 목록. 기본 빈 값. |
+## 실행과 저장 경로
 
 ```sh
-export DATABASE_URL='postgres://사용자:암호@localhost:5432/whalechime?sslmode=disable'
-export WHALECHIME_ADMIN_TOKEN='32바이트 이상의 임의 토큰'
-export WHALECHIME_ENCRYPTION_KEY='32바이트의 Base64 인코딩 값'
-go run ./cmd/whalechime
+go run ./desktop
+# 다른 테스트·개인 설정을 분리할 때
+go run ./desktop -data-dir /사용자/전용/경로
 ```
 
-`scripts/configure-server.sh`는 이 값들을 임의 생성하고 `.local/server/server.env`에 저장한다. 기존 설정을 덮어쓰지 않는다. PostgreSQL 스키마 마이그레이션은 서버 시작 시 트랜잭션·전용 잠금으로 적용한다.
+기본 데이터 경로는 Go의 `os.UserConfigDir()` 아래 `whalechime`이다. Linux는 보통 `~/.config/whalechime`, macOS는 `~/Library/Application Support/whalechime`, Windows는 사용자 `%AppData%` 아래에 생성된다.
 
-## 상태 확인
+- `state.enc`: 연결·수신 설정·최근 이벤트·발송 대기를 포함하는 AES-256-GCM 암호문
+- `key`: 상태를 복원하는 로컬 암호화 키
+- `.lock`: 동일 데이터 디렉터리의 동시 실행을 막는 OS 파일 잠금
 
-- `/healthz`: 프로세스가 HTTP 요청을 처리하는지 확인한다.
-- `/readyz`: 2초 안에 PostgreSQL 연결을 확인한다.
-- `whalechime -healthcheck http://127.0.0.1:8080/readyz`: 별도 curl 없이 준비 상태를 확인하고 종료한다.
-- 에이전트는 30초마다 생존 신호를 보낸다. 웹은 90초 이상 신호가 없으면 연결 확인이 필요하다고 표시한다. 서버 연결 끊김에 대한 별도 합성 알림은 현재 생성하지 않는다.
+설정 파일은 사용자 전용 권한으로 생성한다. **암호화 키와 상태 파일을 함께 백업**하고 백업 접근도 제한한다. 키가 없으면 상태를 복원할 수 없다. 키를 잃었다고 기존 암호문을 초기화하거나 덮어쓰지 않는다. 파일 암호화가 PC·사용자 계정 탈취를 방어하는 것은 아니다.
 
-## 백업과 변경
+최근 수집 이벤트는 2,000개를 보관한다. 발송 대기는 이벤트 이력 보관 한도와 독립적으로 유지하고 실패한 수신처만 최대 8회 시도한다. 서비스 접수 직후 앱이 꺼지거나 결과 저장이 실패하면 같은 알림이 재전송될 수 있다. 앱 종료·절전 중에는 감시와 발송이 중단된다.
 
-PostgreSQL 백업과 `WHALECHIME_ENCRYPTION_KEY`를 함께 보관한다. 키가 없으면 저장된 수신처 연결 정보를 복호화할 수 없다. 키 교체 시 기존 수신처를 새 키로 다시 등록하는 절차가 필요하며 자동 키 순환은 제공하지 않는다.
+## 로컬 웹 화면
+
+트레이의 **웹으로 이동** 또는 **설정** 메뉴로 연다. 앱은 임의 루프백 포트에만 바인딩하며 중앙 서버나 외부 공개 포트를 만들지 않는다. 트레이 진입 주소에서 발급하는 실행별 HttpOnly 세션 쿠키로 인증하고 잘못된 Host·외부 Origin·인증 없는 요청을 거부한다. 사용자가 별도 접속 토큰을 입력할 필요는 없다.
+
+컨테이너 로그는 별도의 로컬 화면에 읽기 전용으로 표시하며 브라우저 주소·HTML에 Docker 자격 증명을 넣지 않는다. 화면을 닫거나 서버 연결을 삭제하면 원격 로그 조회도 취소한다.
+
+## 알림 연결
+
+기본 **이 PC 알림**은 트레이 앱에서 사용한다. Linux는 데스크톱 DBus 알림 서비스, macOS는 알림 센터, Windows는 PowerShell과 시스템 알림을 사용한다. OS에서 알림이 차단되거나 방해 금지 상태이면 표시되지 않을 수 있다. 외부 알림 설정은 [채널 안내](notifications.md)를 따른다.
+
+알림 서비스의 내부 HTTP 호스트가 필요하면 실행 시 `WHALECHIME_ALLOWED_NOTIFICATION_HOSTS=호스트1,호스트2`로 명시한다. 이는 Docker 연결 주소가 아니라 외부 알림 수신처의 사설 주소 예외다.
+
+## 개발·진단용 웹 실행
 
 ```sh
-docker compose --env-file .local/server/server.env -f deploy/server.compose.yaml exec -T postgres pg_dump -U whalechime whalechime > whalechime-backup.sql
+go run ./cmd/whalechime -data-dir /전용/테스트/경로 -session-file /비공개/경로/session.json
 ```
 
-백업 파일에는 사용자 정보와 암호화된 연결 정보가 있으므로 앱 설정 파일처럼 보호한다. 이벤트와 발송 이력은 자동 삭제하지 않는다. 장기 운영 시 저장량을 확인하고 조직의 보존 정책에 따라 PostgreSQL 백업·정리 절차를 수립한다.
-
-## 실행 구조와 한계
-
-- 중앙 서버 한 인스턴스 안에 API, 내장 웹 화면, 발송 작업자 4개가 있다.
-- 에이전트·트레이와 중앙 서버 사이에는 연결 가능한 HTTP(S) 경로가 필요하다. 원격 접속에는 TLS를 사용한다.
-- 컨테이너 조회·로그 중계는 중앙 서버 메모리의 요청을 에이전트가 가져가는 방식이다. 에이전트 수신 포트는 없다.
-- 에이전트 재연결 시 Docker가 제공하는 최근 이벤트 범위에서 재조회한다. 이미 수집한 미확인 이벤트는 로컬 스풀로 복구한다.
-- 에이전트의 데이터 디렉터리는 서버 한 대와 토큰 한 개에 전용으로 사용한다. 다른 Docker 데몬이나 등록 서버로 바꾸면 별도의 디렉터리를 사용한다.
-- 스풀의 용량 제한이나 자동 폐기는 하지 않는다. 중앙 연결이 오래 끊기면 디스크 사용량이 늘어난다. 쓰기 실패 시 조용히 버리지 않고 에이전트가 오류로 종료한다.
-- 배포용 Compose의 PostgreSQL 볼륨은 `down`으로 남으며 `down -v`는 데이터를 삭제하므로 데이터 폐기가 목적일 때만 사용한다.
-
-## 개발 검증
-
-루트와 `desktop`은 별도 Go 모듈이다. `make test`, `make vet`는 두 모듈을 검증한다. PostgreSQL 테스트는 명시한 전용 DB에서 임시 스키마를 생성한다. 실제 컨테이너 로그를 검증하려면 `WHALECHIME_TEST_CONTAINER_ID`로 테스트 컨테이너를 지정한다. 해당 테스트는 `whalechime-live-stdout 정상 출력`, `whalechime-live-stderr 오류 출력`이라는 줄을 기대한다.
-
-동일한 두 줄을 출력한 뒤 종료한 TTY 컨테이너는 `WHALECHIME_TEST_TTY_CONTAINER_ID`로 지정한다. TTY에서는 Docker가 두 출력을 합쳐 제공하므로 합쳐진 출력에 두 줄이 모두 보존되는지 확인한다.
-
-Linux 트레이는 독립 DBus 세션에서 실제 메뉴 구조와 선택 동작을 검증한다. Windows용 트레이는 `desktop`에서 `GOOS=windows CGO_ENABLED=0 go build .`로 교차 빌드할 수 있다. macOS 실행은 해당 OS의 Go·GUI 빌드 환경에서 수행한다.
+이 진입점은 트레이 없는 테스트·진단용이다. 세션 파일의 `web_url`로 화면에 진입하며 파일을 공개하지 않는다. 실행별 세션 정보는 로그에 출력하지 않고 종료 시 파일을 제거한다. PC 알림은 트레이 앱에서 검증한다. 실제 브라우저 회귀 테스트는 이 임시 환경을 자동 생성한다.

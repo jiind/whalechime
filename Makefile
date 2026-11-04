@@ -1,24 +1,17 @@
-.PHONY: fmt vet test test-integration build desktop
+.PHONY: fmt vet test build desktop
 
 fmt:
-	gofmt -w cmd internal
-	cd desktop && gofmt -w .
+	gofmt -w cmd internal desktop
 
 vet:
 	go vet ./...
-	cd desktop && go vet ./...
 
 test:
 	go test -race ./...
-	cd desktop && go test -race ./...
-
-test-integration:
-	test -n "$$WHALECHIME_TEST_DATABASE_URL"
-	go test -race -count=1 ./...
 
 build:
-	go build -trimpath -o bin/whalechime ./cmd/whalechime
-	go build -trimpath -o bin/whalechime-agent ./cmd/whalechime-agent
+	go build -trimpath -o bin/whalechime ./desktop
+	go build -trimpath -o bin/whalechime-web ./cmd/whalechime
 
 desktop:
-	cd desktop && go build -trimpath -o ../bin/whalechime-tray .
+	go build -trimpath -o bin/whalechime ./desktop

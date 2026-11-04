@@ -67,7 +67,7 @@ function frame(value) {
 
 // start는 화면을 연 즉시 선택된 컨테이너의 로그를 연결한다.
 async function start() {
-  // 1. URL에는 중앙 토큰 없이 트레이가 발급한 로컬 화면 식별자만 사용한다.
+  // 1. URL에는 인증정보 없이 트레이가 발급한 로컬 화면 식별자만 사용한다.
   const response = await fetch(location.pathname + "/stream", { signal: controller.signal });
   if (!response.ok || !response.body) {
     throw new Error("로그에 연결할 수 없습니다. 서버 연결과 접근 권한을 확인하세요.");

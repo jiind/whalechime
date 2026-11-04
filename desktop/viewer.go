@@ -25,7 +25,7 @@ type target struct {
 	ContainerName string
 }
 
-// viewer는 중앙 토큰을 숨긴 로컬 로그 전용 화면을 제공한다.
+// viewer는 로컬 앱 세션을 숨긴 로컬 로그 전용 화면을 제공한다.
 type viewer struct {
 	connection *connection
 	base       string
@@ -107,7 +107,7 @@ func (v *viewer) show(w http.ResponseWriter, r *http.Request) {
 	_ = v.page.Execute(w, t)
 }
 
-// stream은 트레이에서 선택한 컨테이너의 로그만 중앙 토큰으로 중계한다.
+// stream은 트레이에서 선택한 컨테이너의 로그만 로컬 앱 세션으로 중계한다.
 func (v *viewer) stream(w http.ResponseWriter, r *http.Request) {
 	// 1. 화면 식별자로 고정된 대상에만 인증된 읽기 요청을 보낸다.
 	t, ok := v.selected(r)
@@ -126,7 +126,7 @@ func (v *viewer) stream(w http.ResponseWriter, r *http.Request) {
 	controller := http.NewResponseController(w)
 	_ = controller.Flush()
 
-	// 2. 브라우저가 닫히면 중앙 연결도 함께 취소한다.
+	// 2. 브라우저가 닫히면 Docker 조회 연결도 함께 취소한다.
 	buffer := make([]byte, 32<<10)
 	for {
 		n, readErr := response.Body.Read(buffer)

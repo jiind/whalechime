@@ -15,11 +15,12 @@ import (
 	"time"
 )
 
-// connection은 사용자 토큰을 브라우저에 전달하지 않는 중앙 서버 연결이다.
+// connection은 사용자 토큰을 브라우저에 전달하지 않는 로컬 앱 연결이다.
 type connection struct {
-	base  string
-	token string
-	http  *http.Client
+	webURL string
+	base   string
+	token  string
+	http   *http.Client
 }
 
 // container는 상태 제어 없이 로그 대상으로 표시할 컨테이너다.
@@ -42,10 +43,10 @@ func newConnection(base, token string) (*connection, error) {
 	// 1. 토큰을 URL에 넣거나 다른 주소로 재전송하지 않도록 검사한다.
 	parsed, err := url.Parse(base)
 	if err != nil || parsed.Hostname() == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
-		return nil, errors.New("WHALECHIME_SERVER_URL에 올바른 서버 주소를 지정하세요")
+		return nil, errors.New("로컬 앱 주소를 확인하세요")
 	}
 	if token == "" || strings.ContainsAny(token, "\r\n") {
-		return nil, errors.New("WHALECHIME_USER_TOKEN이 필요합니다")
+		return nil, errors.New("로컬 앱 세션이 필요합니다")
 	}
 
 	// 2. 로그 스트림에는 전체 제한 시간 대신 연결·헤더 제한을 적용한다.
@@ -64,18 +65,18 @@ func (c *connection) get(ctx context.Context, path string) (*http.Response, erro
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	response, err := c.http.Do(req)
 	if err != nil {
-		return nil, errors.New("중앙 서버에 연결할 수 없습니다")
+		return nil, errors.New("로컬 앱에 연결할 수 없습니다")
 	}
 	if response.StatusCode != http.StatusOK {
 		response.Body.Close()
-		return nil, fmt.Errorf("중앙 서버 HTTP %d", response.StatusCode)
+		return nil, fmt.Errorf("로컬 앱 HTTP %d", response.StatusCode)
 	}
 	return response, nil
 }
 
 // inventory는 관련 서버와 각 서버의 실제 컨테이너 목록을 병렬 조회한다.
 func (c *connection) inventory(ctx context.Context) ([]server, error) {
-	// 1. 중앙 서버에서 사용자가 접근할 수 있는 서버만 가져온다.
+	// 1. 로컬 앱에서 사용자가 접근할 수 있는 서버만 가져온다.
 	response, err := c.get(ctx, "/api/servers")
 	if err != nil {
 		return nil, err
@@ -120,4 +121,12 @@ func (c *connection) inventory(ctx context.Context) ([]server, error) {
 		return servers[i].Name < servers[j].Name
 	})
 	return servers, nil
+}
+
+// pageURL은 로그인 입력 없이 트레이에서 발급한 로컬 화면을 연다.
+func (c *connection) pageURL() string {
+	if c.webURL != "" {
+		return c.webURL
+	}
+	return c.base + "/"
 }

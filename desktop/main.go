@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"fyne.io/systray"
+	"github.com/jiind/whalechime/internal/localapp"
 )
 
 // openBrowser는 실제 메뉴 선택 시 OS 브라우저를 실행하는 경계다.
@@ -27,21 +28,39 @@ var openBrowser = openURL
 
 // main은 실제 OS 트레이 메뉴와 로컬 로그 전용 화면을 실행한다.
 func main() {
-	// 1. 중앙 서버 연결 또는 명시적으로 선택한 미리보기를 준비한다.
+	// 1. 중앙 서버 없이 로컬 앱을 시작하고 선택한 경우에만 미리보기를 연다.
 	demo := flag.Bool("demo", false, "실제 Docker 대신 명시적인 미리보기 데이터 사용")
+	defaultDir, err := localapp.DefaultDirectory()
+	if err != nil {
+		slog.Error("사용자 설정 경로를 확인할 수 없습니다")
+		os.Exit(1)
+	}
+	dataDir := flag.String("data-dir", defaultDir, "설정과 이력을 저장할 사용자 디렉터리")
 	flag.Parse()
-	base, token := os.Getenv("WHALECHIME_SERVER_URL"), os.Getenv("WHALECHIME_USER_TOKEN")
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+	var base, token, webURL string
 	if *demo {
 		var stop func()
 		base, stop = startDemo()
 		defer stop()
 		token = "preview-only"
+		webURL = base
+	} else {
+		app, err := localapp.Start(ctx, *dataDir, slog.Default(), notifyDesktop)
+		if err != nil {
+			slog.Error("앱을 시작할 수 없습니다", "error", err)
+			os.Exit(1)
+		}
+		defer app.Close()
+		base, token, webURL = app.URL, app.Token, app.WebURL
 	}
 	c, err := newConnection(base, token)
 	if err != nil {
 		slog.Error("트레이 초기화 실패", "error", err)
 		os.Exit(1)
 	}
+	c.webURL = webURL
 	v, server, listener, err := newViewer(c)
 	if err != nil {
 		slog.Error("로그 화면 서버를 시작할 수 없습니다")
@@ -49,8 +68,6 @@ func main() {
 	}
 	go server.Serve(listener)
 	defer stopServer(server)
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer cancel()
 	var work sync.WaitGroup
 
 	// 2. 서버·컨테이너 선택은 트레이 안에서만 수행한다.
@@ -151,18 +168,22 @@ func render(ctx context.Context, c *connection, v *viewer, servers []server, mes
 
 	// 2. 일반 웹 진입은 컨테이너 로그 선택과 독립적으로 제공한다.
 	systray.AddSeparator()
-	web := systray.AddMenuItem("웹으로 이동", "중앙 서버의 웹 화면 열기")
+	web := systray.AddMenuItem("웹으로 이동", "로컬 대시보드 열기")
 	watch(ctx, web, func() {
-		openBrowser(c.base)
+		openBrowser(c.pageURL())
 	})
-	settings := systray.AddMenuItem("설정", "중앙 웹에서 개인 알림 설정")
+	settings := systray.AddMenuItem("설정", "이 PC의 연결과 알림 설정")
+	connections := settings.AddSubMenuItem("서버 연결 설정", "HTTP·HTTPS·mTLS·SSH 연결 관리")
+	watch(ctx, connections, func() {
+		openBrowser(c.pageURL() + "#servers")
+	})
 	preferences := settings.AddSubMenuItem("수신 항목 설정", "받을 이벤트 항목 선택")
 	watch(ctx, preferences, func() {
-		openBrowser(c.base + "/#preferences")
+		openBrowser(c.pageURL() + "#preferences")
 	})
 	destinations := settings.AddSubMenuItem("수신처 설정", "알림을 받을 곳 관리")
 	watch(ctx, destinations, func() {
-		openBrowser(c.base + "/#destinations")
+		openBrowser(c.pageURL() + "#destinations")
 	})
 	quit := systray.AddMenuItem("종료", "이 PC의 트레이 앱 종료")
 	watch(ctx, quit, systray.Quit)

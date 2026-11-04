@@ -21,15 +21,10 @@ const test = base.extend({
   }
 });
 
-const token = process.env.WHALECHIME_TEST_ADMIN_TOKEN;
-test.skip(!token, "전용 테스트 서버의 WHALECHIME_TEST_ADMIN_TOKEN이 필요합니다.");
-
-// login은 실제 로그인 폼을 사용해 관리자 계정으로 진입한다.
-async function login(page) {
-  await page.goto("/");
-  await page.getByLabel("접속 토큰").fill(token);
-  await page.getByRole("button", { name: "시작하기" }).click();
-  await expect(page.getByRole("heading", { name: "대시보드", exact: true })).toBeVisible();
+// login은 트레이에서 사용하는 로컬 진입 주소로 로그인 폼 없이 화면을 연다.
+async function login(page, hash = "") {
+  await page.goto(process.env.WHALECHIME_TEST_WEB_URL + hash);
+  await expect(page.getByRole("heading", { name: hash ? "서버 연결" : "대시보드", exact: true })).toBeVisible();
 }
 
 test("개인 항목 저장과 수신처 관리는 독립적이며 다시 열어도 유지된다", async ({ page, receiver }) => {
@@ -77,60 +72,51 @@ test("개인 항목 저장과 수신처 관리는 독립적이며 다시 열어�
   await expect(page.getByRole("checkbox", { name: "image.push", exact: true })).toBeChecked();
 });
 
-test("관리자가 팀·서버·사용자를 연결하고 일반 사용자는 자기 설정만 변경한다", async ({ page, browser }) => {
-  // 1. 실제 관리자 화면에서 사용자·서버·팀과 두 연결을 등록한다.
-  await login(page);
-  await page.getByRole("button", { name: "관리", exact: true }).click();
-  const suffix = Date.now();
-  const userName = `사용자 ${suffix}`;
-  const serverName = `서버 ${suffix}`;
-  const teamName = `팀 ${suffix}`;
-  await page.getByLabel("사용자 이름", { exact: true }).fill(userName);
-  await page.getByRole("button", { name: "계정 발급" }).click();
-  await expect(page.locator("#issued-token-value")).toContainText("wc_user_");
-  const userToken = (await page.locator("#issued-token-value").textContent()).split("\n").at(-1);
-  await page.getByLabel("서버 이름", { exact: true }).fill(serverName);
-  await page.getByRole("button", { name: "서버 등록", exact: true }).click();
-  await expect(page.locator("#issued-token-value")).toContainText("wc_agent_");
-  await page.getByLabel("새 팀 이름").fill(teamName);
-  await page.getByRole("button", { name: "팀 등록", exact: true }).click();
-  await page.locator("#team-member-list").getByRole("checkbox", { name: userName, exact: true }).check();
-  await expect(page.getByRole("status")).toContainText("연결 설정을 변경했습니다");
-  await page.getByLabel("감시 서버", { exact: true }).selectOption({ label: serverName });
-  await page.locator("#server-team-list").getByRole("checkbox", { name: teamName, exact: true }).check();
-  await expect(page.getByRole("status")).toContainText("연결 설정을 변경했습니다");
-
-  // 2. 별도 브라우저 문맥에서 발급받은 사용자로 로그인한다.
-  const context = await browser.newContext();
-  try {
-    const userPage = await context.newPage();
-    await userPage.goto(new URL("/", page.url()).toString());
-    await userPage.getByLabel("접속 토큰").fill(userToken);
-    await userPage.getByRole("button", { name: "시작하기" }).click();
-    await expect(userPage.getByText(serverName, { exact: true })).toBeVisible();
-    await expect(userPage.getByRole("button", { name: "관리", exact: true })).toBeHidden();
-    await userPage.getByRole("button", { name: "수신 항목", exact: true }).click();
-    await userPage.getByRole("checkbox", { name: "image.pull", exact: true }).check();
-    await userPage.getByRole("button", { name: "설정 저장" }).click();
-    await expect(userPage.getByRole("status")).toContainText("수신 항목을 저장했습니다");
-  } finally {
-    await context.close();
-  }
-
-  // 3. 팀 연결은 새로고침 후에도 유지된다.
+test("서버별 HTTP·HTTPS·mTLS·SSH 설정을 선택하고 저장·수정·삭제한다", async ({ page, receiver }) => {
+  // 1. HTTP 연결을 저장하고 새로고침 후에도 주소와 선택이 유지되는지 확인한다.
+  await login(page, "#servers");
+  const name = `LAN 서버 ${Date.now()}`;
+  await page.getByLabel("서버 이름", { exact: true }).fill(name);
+  await page.getByLabel("서버 주소", { exact: true }).fill(receiver.url);
+  await page.getByLabel("이 서버 감시하기").uncheck();
+  await page.getByRole("button", { name: "연결 저장", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("서버 연결을 저장했습니다");
+  const card = page.locator(".server-card").filter({ has: page.getByRole("heading", { name, exact: true }) });
+  await expect(card).toContainText(receiver.url);
   await page.reload();
-  await page.getByLabel("감시 서버", { exact: true }).selectOption({ label: serverName });
-  await expect(page.locator("#server-team-list").getByRole("checkbox", { name: teamName, exact: true })).toBeChecked();
+  await expect(card).toBeVisible();
+  await card.getByRole("button", { name: "연결 수정", exact: true }).click();
+  await expect(page.getByLabel("서버 주소", { exact: true })).toHaveValue(receiver.url);
+  await expect(page.getByLabel("이 서버 감시하기")).not.toBeChecked();
+
+  // 2. HTTPS에서만 CA·mTLS를 표시하고 인증서 입력을 필수로 전환한다.
+  await page.getByLabel("서버 주소", { exact: true }).fill("https://docker.example:2376");
+  await expect(page.getByLabel("CA 인증서 파일 경로", { exact: true })).toBeVisible();
+  await page.getByLabel("mTLS 사용", { exact: true }).check();
+  await expect(page.getByLabel("클라이언트 인증서 파일 경로", { exact: true })).toHaveAttribute("required", "");
+  await expect(page.getByLabel("클라이언트 개인키 파일 경로", { exact: true })).toBeVisible();
+  await page.getByLabel("서버 주소", { exact: true }).fill(receiver.url);
+  await expect(page.getByLabel("mTLS 사용", { exact: true })).toBeHidden();
+  await page.getByRole("button", { name: "연결 저장", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("서버 연결을 저장했습니다");
+
+  // 3. SSH로 전환하면 TLS 입력을 숨기고 기존 키 사용 안내를 표시한다.
+  await card.getByRole("button", { name: "연결 수정", exact: true }).click();
+  await page.getByLabel("연결 방식", { exact: true }).selectOption("ssh");
+  await page.getByLabel("서버 주소", { exact: true }).fill("ssh://test-user@my-server:2222");
+  await expect(page.getByLabel("SSH 개인키 파일 경로", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("CA 인증서 파일 경로", { exact: true })).toBeHidden();
+  await page.getByRole("button", { name: "연결 저장", exact: true }).click();
+  await expect(card).toContainText("ssh://test-user@my-server:2222");
+  page.once("dialog", (dialog) => dialog.accept());
+  await card.getByRole("button", { name: "연결 삭제", exact: true }).click();
+  await expect(card).toHaveCount(0);
 });
 
-test("모바일 설정 바로가기와 로그아웃을 사용할 수 있다", async ({ page }) => {
+test("모바일에서 로그인 입력 없이 로컬 서버 연결 설정을 연다", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/#destinations");
-  await page.getByLabel("접속 토큰").fill(token);
-  await page.getByRole("button", { name: "시작하기" }).click();
-  await expect(page.getByRole("heading", { name: "내 수신처", exact: true })).toBeVisible();
-  await expect(page.getByLabel("알림 서비스")).toBeVisible();
+  await login(page, "#servers");
+  await expect(page.getByLabel("서버 주소", { exact: true })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "접속 토큰" })).toHaveCount(0);
   await expect(page.locator("body")).toHaveJSProperty("scrollWidth", 390);
-  await page.locator("#logout-mobile").click();
-  await expect(page.getByLabel("접속 토큰")).toBeVisible();
 });

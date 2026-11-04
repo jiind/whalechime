@@ -121,7 +121,7 @@ func TestNativeTrayHierarchy(t *testing.T) {
 	default:
 	}
 
-	// 3. 컨테이너 클릭만 로그 화면을 열고 웹 이동은 중앙 주소만 연다.
+	// 3. 컨테이너 클릭만 로그 화면을 열고 웹 이동은 로컬 주소만 연다.
 	if err := object.Call("com.canonical.dbusmenu.Event", 0, leaf.ID, "clicked", dbus.MakeVariant(int32(0)), uint32(0)).Err; err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +146,7 @@ func TestNativeTrayHierarchy(t *testing.T) {
 	}
 	select {
 	case address := <-opened:
-		if address != c.base {
+		if address != c.pageURL() {
 			t.Fatal("웹 이동과 로그 화면이 분리되지 않았습니다")
 		}
 	case <-time.After(2 * time.Second):
@@ -154,15 +154,15 @@ func TestNativeTrayHierarchy(t *testing.T) {
 	}
 	preferences, found := findNative(layout, "수신 항목 설정")
 	if !found {
-		t.Fatal("중앙 웹으로 연결하는 설정 메뉴가 없습니다")
+		t.Fatal("로컬 웹으로 연결하는 설정 메뉴가 없습니다")
 	}
 	if err := object.Call("com.canonical.dbusmenu.Event", 0, preferences.ID, "clicked", dbus.MakeVariant(int32(0)), uint32(0)).Err; err != nil {
 		t.Fatal(err)
 	}
 	select {
 	case address := <-opened:
-		if address != c.base+"/#preferences" {
-			t.Fatal("설정 메뉴가 중앙 웹의 개인 설정에 연결되지 않습니다")
+		if address != c.pageURL()+"#preferences" {
+			t.Fatal("설정 메뉴가 로컬 웹의 개인 설정에 연결되지 않습니다")
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("설정 메뉴 클릭이 처리되지 않았습니다")
