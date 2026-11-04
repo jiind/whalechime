@@ -36,6 +36,8 @@ git diff --check
 
 로컬 브라우저 검증은 설치된 Chrome을 `WHALECHIME_TEST_BROWSER_PATH`로 지정했다. GitHub의 `browser` 검사는 Playwright Chromium을 설치해 같은 시나리오를 실행한다. 원격 실행 결과는 PR의 필수 `go`·`browser` 검사를 따른다.
 
+구현 커밋 `d489909`의 [GitHub Actions 실행](https://github.com/jiind/whalechime/actions/runs/41792336765)에서 `go`와 `browser`가 모두 통과했다. 이후 문서 변경이나 병합 커밋의 검사 결과는 해당 커밋의 실행 결과를 별도로 확인한다.
+
 실제 Docker 테스트는 로컬에 `alpine:3.22`가 필요하며 테스트 소유 컨테이너만 생성·정리한다. Docker 데몬 설정이나 호스트 권한을 변경하지 않는다. 원격 데몬의 외부 API 포트를 실제로 개방한 검증과 구분한다.
 
 ## 미확인 환경

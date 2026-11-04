@@ -54,6 +54,15 @@ npm run test:ui
 
 `bin/whalechime`은 트레이 앱입니다. 브라우저 테스트는 사용자 설정과 분리된 임시 로컬 앱과 로컬 HTTP 수신처를 자동 생성하고 정리합니다. 외부 계정으로 알림을 보내지 않습니다.
 
+Windows에서는 저장소 루트의 PowerShell에서 다음과 같이 빌드·실행합니다. `make`는 필요하지 않습니다.
+
+```powershell
+go build -ldflags "-H=windowsgui" -o whalechime.exe ./desktop
+.\whalechime.exe
+```
+
+`make` 없이 Go 검사를 실행하려면 `go vet ./...`, `go test -race ./...`를 사용합니다. 브라우저 테스트에는 Node.js 24와 npm이 추가로 필요합니다.
+
 Linux에서는 StatusNotifier/AppIndicator 트레이와 데스크톱 알림 서비스가 필요합니다. Windows는 교차 빌드를 검증하며 실제 알림·클릭 동작은 해당 OS에서 추가 확인이 필요합니다. macOS 실제 실행은 아직 검증하지 않았습니다. [검증 범위](docs/verification.md)
 
 ## 동작의 경계
