@@ -1,13 +1,14 @@
-# 보안 제보
+# Security reporting
 
-Whalechime은 초기 개발 단계입니다. 최신 `main`을 기준으로 수정하며 별도 장기 지원 버전은 아직 없습니다.
+Whalechime is in early development. Fixes target the latest `main`; there are no separately maintained long-term support versions.
 
-취약점이나 자격 증명 노출은 공개 이슈·PR 대신 GitHub의 [비공개 취약점 제보](https://github.com/jiind/whalechime/security/advisories/new)를 이용하세요. 영향받는 버전·OS·연결 방식·재현 절차·예상 영향을 포함하되 실제 키·토큰·사용자 로그는 보내지 마세요. 재현에는 가짜 값과 본인 소유 환경을 사용하세요.
+Report vulnerabilities and credential exposure through [GitHub private vulnerability reporting](https://github.com/jiind/whalechime/security/advisories/new), rather than a public issue or pull request. Include the affected version, OS, connection mode, reproduction steps, and expected impact. Use dummy values and an environment you own; do not include actual keys, tokens, or private logs.
 
-## 연결과 로컬 데이터
+## Connections and local data
 
-- 앱은 읽기 전용 Docker 요청만 보내지만, 서버의 Docker API 권한 자체가 읽기 전용으로 바뀌지는 않습니다.
-- HTTP는 암호화·클라이언트 인증을 제공하지 않습니다. LAN에서도 서버의 접근 허용 범위를 관리하세요.
-- HTTPS는 서버 인증서를 검증하며 mTLS를 선택할 수 있습니다. SSH는 기존 호스트 키 검증을 유지합니다.
-- 수신처 설정·이력은 로컬 파일에 암호화하지만 키도 같은 PC에 보관합니다. 사용자 계정과 백업을 보호하세요.
-- 앱의 로컬 세션 파일·암호화 키·인증서 개인키를 이슈·PR·로그에 첨부하지 마세요.
+- The app sends read-only Docker requests. This does not make the server's Docker API credentials read-only.
+- HTTP does not provide encryption or client authentication. Restrict which clients can reach the endpoint, including on a LAN.
+- HTTPS verifies the server certificate. mTLS is optional. SSH preserves existing host-key verification.
+- Settings and history are encrypted locally, but the key is stored on the same PC. Protect the user account and backups.
+- Never attach local session files, encryption keys, or certificate private keys to issues, pull requests, or logs.
+- Release packages are not developer-signed or notarized. SHA-256 checksums detect changes relative to the published manifest; they are not a substitute for a trusted release source.

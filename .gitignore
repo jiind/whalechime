@@ -40,3 +40,7 @@ test-results/
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Release archives
+dist/
+__pycache__/

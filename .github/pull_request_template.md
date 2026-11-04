@@ -1,15 +1,16 @@
-## 변경 내용
+## Changes
 
-어떤 상황에서 사용자 동작이 어떻게 바뀌는지 설명해주세요.
+Describe the triggering situation and resulting user behavior.
 
-## 검증
+## Validation
 
-실행한 검사와 결과, 실행하지 못한 환경을 적어주세요.
+List the checks you ran, their results, and environments you could not verify.
 
-- [ ] Go 변경 시 `gofmt`, `go vet ./...`, `go test -race ./...` 확인
-- [ ] UI 변경 시 관련 브라우저 흐름 확인
-- [ ] 변경된 설정·동작과 문서 일치 확인
+- [ ] For Go changes: `gofmt`, `go vet ./...`, and `go test -race ./...`
+- [ ] For UI changes: relevant browser flows
+- [ ] For release changes: package tests and native build checks
+- [ ] Documentation matches the changed settings and behavior
 
-## 관련 이슈
+## Related issue
 
 Closes #

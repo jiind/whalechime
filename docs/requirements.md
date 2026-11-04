@@ -1,41 +1,41 @@
-# Whalechime 제품 요구사항
+# Product requirements
 
-2026-11-04에 중앙 서버·에이전트 방식에서 개인용 로컬 클라이언트로 방향을 변경했다. 이 문서는 현재 요구사항이며 구현·실행 근거는 [검증 기록](verification.md)을 따른다.
+On 2026-11-04, Whalechime changed from a central server and agent architecture to a personal local client. This document defines the current requirements; use the [verification record](verification.md) for implementation evidence and test coverage.
 
-## 현재 범위
+## Current scope
 
-- 한 사용자가 자신의 PC에서 여러 Docker 서버에 직접 연결한다.
-- 중앙 서버·PostgreSQL·사용자 계정·팀·수집 에이전트 설치를 요구하지 않는다.
-- 서버별 HTTP·HTTPS API와 SSH를 선택한다. HTTPS에서 사설 CA와 mTLS를 선택할 수 있다.
-- mTLS에는 클라이언트 인증서·개인키 경로가 필요하다. HTTPS 서버 인증서 검증과 SSH 호스트 검증을 끄지 않는다.
-- 서버의 Docker·방화벽·계정 설정을 자동 변경하지 않는다.
-- 수신 설정에 관계없이 Docker가 제공하는 이벤트를 수집하고, 선택한 이벤트만 활성 수신처 모두에 전달한다.
-- 수신 항목과 수신처는 독립적이며 이벤트별로 채널을 지정하지 않는다.
-- 로컬 데스크톱 알림을 기본 수신처로 제공하고 메일·외부 메신저를 선택적으로 등록한다.
-- 설정·최근 수집 이력·재전송 대기를 PC에 보관하고 자격 증명을 조회 응답이나 로그에 노출하지 않는다.
+- One person connects directly from their PC to multiple Docker servers.
+- No central server, PostgreSQL service, user accounts, teams, or collection agents are required.
+- Each server can use HTTP/HTTPS Docker API or SSH. HTTPS can use a private CA and optional mTLS.
+- mTLS requires client certificate and private key file paths. Keep HTTPS server verification and SSH host-key verification enabled.
+- Do not automatically modify Docker, firewall rules, or host account permissions.
+- Collect available Docker events regardless of notification settings. Send selected events to every enabled destination.
+- Keep event preferences independent of destinations; do not assign separate channels per event type.
+- Provide desktop notifications as the default destination, with optional email and external messaging services.
+- Store settings, recent event history, and pending notification jobs on the PC. Do not expose credentials in read responses or logs.
 
-## 트레이와 로그
+## Tray and logs
 
-- 트레이 우클릭은 메뉴 목록을 표시한다. 바로 웹 화면을 열지 않는다.
-- 서버 메뉴를 펼치면 컨테이너 목록이 옆으로 펼쳐지는 하위 메뉴로 나타난다.
-- 컨테이너를 클릭하면 해당 컨테이너의 별도 로그 화면이 열린다.
-- 로그 화면에서 추가 서버 선택·옵션 선택·조회·재생 버튼을 요구하지 않는다.
-- 최근 200줄과 새 로그를 화면 내부 전체 영역에 자동 출력하고 서버명·컨테이너명·발생 시각을 표시한다.
-- 빈 로그·연결 실패·출력 종료를 구분하고 TTY·stdout·stderr·한글을 보존한다.
-- 웹으로 이동과 설정 메뉴는 로그 진입과 별개로 로컬 화면을 연다.
-- 컨테이너·이미지 생성·시작·중지·배포·삭제 같은 제어 기능은 제공하지 않는다.
+- Right-clicking the tray icon displays a menu rather than immediately opening a web page.
+- Expanding a server displays its containers in a nested tray submenu.
+- Selecting a container opens a separate log view for that container.
+- The log view must not require additional server selection, options, query, or play controls.
+- Automatically display the last 200 lines and subsequent output across the view's content area, with server name, container name, and timestamps.
+- Distinguish empty logs, connection failures, and completed output. Preserve TTY output, stdout/stderr, and UTF-8 text.
+- Dashboard and settings entry points remain separate from log navigation.
+- Do not provide container/image creation, deployment, start, stop, or deletion controls.
 
-## 운영 경계
+## Operational limits
 
-- PC·앱이 꺼져 있거나 절전 상태이면 수집·발송이 멈춘다.
-- Docker의 과거 이벤트 제한 때문에 끊긴 구간의 완전한 복구는 보장하지 않는다.
-- 원격 Docker 로그 API로 읽을 수 있는 컨테이너 출력만 조회한다. Docker 데몬의 호스트 원본 로그·로그 파일 직접 읽기는 포함하지 않는다.
-- 동일 데이터 디렉터리의 앱 중복 실행을 차단한다. 중앙 수집·사용자 공유·팀 권한 기능은 범위에서 제외한다.
-- 실제 OS별 트레이·알림, 실제 메신저 최종 배달 등 확인하지 않은 항목은 검증 완료로 표현하지 않는다.
+- Collection and notification delivery stop when the PC or app is off or asleep.
+- Docker's historical event limit prevents guaranteed recovery of every missed event.
+- Read only container output available through Docker's logs API. Host-level Docker daemon logs and direct host log-file access are outside scope.
+- Prevent concurrent app instances from using the same data directory. Centralized collection, account sharing, and team authorization are outside scope.
+- Clearly distinguish verified behavior from untested OS interaction and actual external service delivery.
 
-## 후속 검토
+## Future work
 
-- 설치 패키지·자동 실행·서명·자동 업데이트
-- OS 자격 증명 저장소 연동
-- 긴 이력의 검색·내보내기와 서버별 수신 정책
-- Docker context 가져오기
+- Installers, automatic startup, developer signing, notarization, and automatic updates
+- Integration with OS credential stores
+- Search/export of longer event history and per-server preferences
+- Importing Docker contexts

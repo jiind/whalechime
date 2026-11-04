@@ -1,39 +1,39 @@
-# 데이터 보관과 운영
+# Local storage and operations
 
-## 실행과 저장 경로
+## Running and choosing a data directory
 
 ```sh
 go run ./desktop
-# 다른 테스트·개인 설정을 분리할 때
-go run ./desktop -data-dir /사용자/전용/경로
+# Use a separate directory for another local configuration or test environment.
+go run ./desktop -data-dir /path/to/private/directory
 ```
 
-기본 데이터 경로는 Go의 `os.UserConfigDir()` 아래 `whalechime`이다. Linux는 보통 `~/.config/whalechime`, macOS는 `~/Library/Application Support/whalechime`, Windows는 사용자 `%AppData%` 아래에 생성된다.
+The default directory is `whalechime` under Go's `os.UserConfigDir()`: usually `~/.config/whalechime` on Linux, `~/Library/Application Support/whalechime` on macOS, and a directory under the user's `%AppData%` on Windows.
 
-- `state.enc`: 연결·수신 설정·최근 이벤트·발송 대기를 포함하는 AES-256-GCM 암호문
-- `key`: 상태를 복원하는 로컬 암호화 키
-- `.lock`: 동일 데이터 디렉터리의 동시 실행을 막는 OS 파일 잠금
+- `state.enc`: AES-256-GCM-encrypted connections, preferences, recent events, and pending deliveries
+- `key`: the local encryption key needed to restore that state
+- `.lock`: an OS file lock preventing concurrent access to the same data directory
 
-설정 파일은 사용자 전용 권한으로 생성한다. **암호화 키와 상태 파일을 함께 백업**하고 백업 접근도 제한한다. 키가 없으면 상태를 복원할 수 없다. 키를 잃었다고 기존 암호문을 초기화하거나 덮어쓰지 않는다. 파일 암호화가 PC·사용자 계정 탈취를 방어하는 것은 아니다.
+Files are created for the current user. **Back up both the encrypted state and its key**, and restrict access to backups. The state cannot be restored without the original key; losing the key does not cause the app to overwrite or reset the existing encrypted state. File encryption does not protect against compromise of the entire user account or PC.
 
-최근 수집 이벤트는 2,000개를 보관한다. 발송 대기는 이벤트 이력 보관 한도와 독립적으로 유지하고 실패한 수신처만 최대 8회 시도한다. 서비스 접수 직후 앱이 꺼지거나 결과 저장이 실패하면 같은 알림이 재전송될 수 있다. 앱 종료·절전 중에는 감시와 발송이 중단된다.
+The app retains the most recent 2,000 collected events. Pending delivery jobs are stored independently of that history limit; failed destinations get up to eight attempts. If the app stops or result persistence fails immediately after a service accepts a notification, it may be sent again. Collection and delivery stop while the app or PC is off or asleep.
 
-## 로컬 웹 화면
+## Local web interface
 
-트레이의 **웹으로 이동** 또는 **설정** 메뉴로 연다. 앱은 임의 루프백 포트에만 바인딩하며 중앙 서버나 외부 공개 포트를 만들지 않는다. 트레이 진입 주소에서 발급하는 실행별 HttpOnly 세션 쿠키로 인증하고 잘못된 Host·외부 Origin·인증 없는 요청을 거부한다. 사용자가 별도 접속 토큰을 입력할 필요는 없다.
+Open the UI through the tray's dashboard or settings entries. The app binds only to a random loopback port and does not create a publicly accessible server. An instance-specific HttpOnly session cookie is issued through the tray's launch URL. Requests with an unexpected Host, external Origin, or no authentication are rejected. Users do not need to enter a separate access token.
 
-컨테이너 로그는 별도의 로컬 화면에 읽기 전용으로 표시하며 브라우저 주소·HTML에 Docker 자격 증명을 넣지 않는다. 화면을 닫거나 서버 연결을 삭제하면 원격 로그 조회도 취소한다.
+Container logs use a separate local view. Docker credentials are not put in browser URLs or HTML. Closing the view or removing the server connection cancels the remote log request.
 
-## 알림 연결
+## Notification connections
 
-기본 **이 PC 알림**은 트레이 앱에서 사용한다. Linux는 데스크톱 DBus 알림 서비스, macOS는 알림 센터, Windows는 PowerShell과 시스템 알림을 사용한다. OS에서 알림이 차단되거나 방해 금지 상태이면 표시되지 않을 수 있다. 외부 알림 설정은 [채널 안내](notifications.md)를 따른다.
+The default desktop destination works in the tray app. Linux uses the desktop DBus notification service, macOS uses Notification Center, and Windows uses PowerShell and system notifications. OS notification restrictions or Do Not Disturb settings may suppress display. See [notification channels](notifications.md) for external services.
 
-알림 서비스의 내부 HTTP 호스트가 필요하면 실행 시 `WHALECHIME_ALLOWED_NOTIFICATION_HOSTS=호스트1,호스트2`로 명시한다. 이는 Docker 연결 주소가 아니라 외부 알림 수신처의 사설 주소 예외다.
+If an internal notification receiver needs HTTP or a private address, set `WHALECHIME_ALLOWED_NOTIFICATION_HOSTS=host1,host2` when launching the app. This setting applies to notification destinations, not Docker connection addresses.
 
-## 개발·진단용 웹 실행
+## Headless development and diagnostics
 
 ```sh
-go run ./cmd/whalechime -data-dir /전용/테스트/경로 -session-file /비공개/경로/session.json
+go run ./cmd/whalechime -data-dir /path/to/test-data -session-file /path/to/private/session.json
 ```
 
-이 진입점은 트레이 없는 테스트·진단용이다. 세션 파일의 `web_url`로 화면에 진입하며 파일을 공개하지 않는다. 실행별 세션 정보는 로그에 출력하지 않고 종료 시 파일을 제거한다. PC 알림은 트레이 앱에서 검증한다. 실제 브라우저 회귀 테스트는 이 임시 환경을 자동 생성한다.
+This entry point runs the local web app without a tray for testing or diagnostics. Open the session file's `web_url` and keep the file private. The launch URL is not logged, an existing session file is not overwritten, and the file is removed on normal shutdown. Check desktop notifications through the tray app. Browser tests create this isolated environment automatically.
