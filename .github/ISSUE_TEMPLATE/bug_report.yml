@@ -1,0 +1,25 @@
+name: 버그 제보
+description: 예상과 다른 동작을 재현 정보와 함께 알려주세요.
+title: "fix: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: "취약점은 SECURITY.md의 비공개 제보를 이용하세요. 키·토큰·실제 로그의 비밀값을 제거해주세요."
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 재현 절차
+      description: OS·앱 버전·Docker 버전·HTTP/HTTPS/mTLS/SSH 연결 방식과 재현 순서를 적어주세요.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 기대 동작과 실제 동작
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 비밀정보를 제거한 오류·화면

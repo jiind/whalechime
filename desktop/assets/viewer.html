@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{.ContainerName}} · Whalechime 로그</title>
+    <link rel="stylesheet" href="/viewer.css">
+    <script src="/viewer.js" defer></script>
+  </head>
+  <body>
+    <header>
+      <div><span class="brand">Whalechime</span><span class="separator">/</span><span>{{.ServerName}}</span><span class="separator">/</span><strong>{{.ContainerName}}</strong></div>
+      <span id="status" role="status">연결 중</span>
+    </header>
+    <main id="output" aria-label="컨테이너 로그" tabindex="0">
+      <p id="empty">로그를 연결하고 있습니다…</p>
+      <pre id="lines"></pre>
+    </main>
+  </body>
+</html>

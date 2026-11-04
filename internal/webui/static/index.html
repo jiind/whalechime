@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0c171b">
+  <title>Whalechime · Docker 알림</title>
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div id="app" class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="#overview"><img src="/icon.svg" alt="" width="36" height="36">Whalechime</a>
+      <p class="nav-label">WORKSPACE</p>
+      <nav aria-label="주 메뉴">
+        <button data-view="overview" class="nav-item active"><span aria-hidden="true">◉</span><span>대시보드</span></button>
+        <button data-view="events" class="nav-item"><span aria-hidden="true">≋</span><span>이벤트 이력</span></button>
+        <button data-view="preferences" class="nav-item"><span aria-hidden="true">☷</span><span>수신 항목</span></button>
+        <button data-view="destinations" class="nav-item"><span aria-hidden="true">↗</span><span>내 수신처</span></button>
+        <button data-view="deliveries" class="nav-item"><span aria-hidden="true">✓</span><span>발송 이력</span></button>
+        <button data-view="servers" class="nav-item"><span aria-hidden="true">⚙</span><span>서버 연결</span></button>
+      </nav>
+      <div class="sidebar-footer"><span>이 PC에서 감시 중<br>앱 종료·절전 중에는 수집이 중단됩니다.</span></div>
+    </aside>
+    <main>
+      <header class="topbar"><span class="small muted">나의 Docker 모니터</span><span class="status-pill">● 로컬 앱</span></header>
+      <div class="content">
+        <div class="page-heading"><div><p class="eyebrow" id="page-kicker">AT A GLANCE</p><h1 id="page-title">대시보드</h1><p class="muted" id="page-description"></p></div><button id="refresh" class="secondary">↻ 새로고침</button></div>
+        <p id="page-error" class="error" role="alert"></p>
+        <section id="view-overview" class="view"></section>
+        <section id="view-events" class="view" hidden>
+          <div class="filter-bar"><label>서버<select id="event-server" aria-label="서버"><option value="">전체 서버</option></select></label><label>이벤트<select id="event-key" aria-label="이벤트"><option value="">전체 이벤트</option></select></label><button id="filter-events" class="secondary">조회</button></div>
+          <div id="event-list"></div>
+        </section>
+        <section id="view-preferences" class="view" hidden>
+          <div class="panel preference-default"><div><h2>미지정 항목도 받기</h2><p class="muted small">개별 설정이 없는 항목과 새로 발견되는 이벤트의 기본 수신 여부입니다.</p></div><label class="switch"><input type="checkbox" id="default-enabled"><span></span><span class="sr-only">미지정 항목도 받기</span></label></div>
+          <div class="filter-bar"><label class="grow">항목 검색<input id="preference-search" type="search" placeholder="image.pull, container.stop…"></label><button id="all-on" class="secondary">전체 켜기</button><button id="all-off" class="secondary">전체 끄기</button></div>
+          <div id="preference-groups"></div>
+          <div class="sticky-actions"><span class="small muted">수신 항목은 활성화한 모든 수신처에 공통 적용됩니다.</span><button id="save-preferences" class="primary">설정 저장</button></div>
+        </section>
+        <section id="view-destinations" class="view" hidden>
+          <div id="destination-list" class="card-grid"></div>
+          <form id="destination-form" class="panel form-panel">
+            <h2 id="destination-form-title">수신처 추가</h2>
+            <div class="form-grid"><label>수신처 이름<input id="destination-name" maxlength="100" required placeholder="개인 Telegram"></label><label>알림 서비스<select id="destination-kind" aria-label="알림 서비스"></select></label></div>
+            <div id="destination-fields" class="form-grid"></div>
+            <label class="checkbox-label"><input type="checkbox" id="destination-enabled" checked> 이 수신처로 알림 받기</label>
+            <p class="small muted">연결 정보는 암호화해 보관합니다. 수정할 때는 연결 정보를 다시 입력하세요.</p>
+            <div class="actions"><button type="submit" class="primary">수신처 저장</button><button type="button" id="cancel-destination" class="secondary" hidden>수정 취소</button></div>
+          </form>
+        </section>
+        <section id="view-deliveries" class="view" hidden><div id="delivery-list"></div></section>
+        <section id="view-servers" class="view" hidden>
+          <div id="server-list" class="card-grid"></div>
+          <form id="server-form" class="panel form-panel">
+            <h2 id="server-form-title">서버 연결 추가</h2>
+            <div class="form-grid">
+              <label>서버 이름<input id="server-name" required maxlength="100" placeholder="production-01"></label>
+              <label>연결 방식<select id="server-transport" aria-label="연결 방식"><option value="api">Docker API</option><option value="ssh">SSH</option></select></label>
+              <label>서버 주소<input id="server-address" type="url" required placeholder="http://192.168.1.10:2375"></label>
+            </div>
+            <p id="connection-note" class="small muted">HTTP는 전송을 암호화하지 않습니다. 서버의 접근 허용 범위를 확인하세요.</p>
+            <div id="tls-fields" hidden>
+              <label>CA 인증서 파일 경로<input id="server-ca" placeholder="비워두면 시스템 인증서 사용"></label>
+              <p class="small muted">HTTPS 서버 인증서는 항상 검증합니다.</p>
+              <label class="checkbox-label"><input id="server-mtls" type="checkbox"> mTLS 사용</label>
+              <div id="mtls-fields" class="form-grid" hidden>
+                <label>클라이언트 인증서 파일 경로<input id="server-cert"></label>
+                <label>클라이언트 개인키 파일 경로<input id="server-key"></label>
+              </div>
+            </div>
+            <div id="ssh-fields" hidden>
+              <label>SSH 개인키 파일 경로<input id="server-identity" placeholder="선택 사항: 기존 SSH 설정과 에이전트 재사용"></label>
+              <p class="small muted">ssh://사용자@서버:포트 또는 ssh://SSH별칭을 사용합니다. 기존 known_hosts에 등록된 서버만 연결합니다.</p>
+            </div>
+            <label class="checkbox-label"><input id="server-enabled" type="checkbox" checked> 이 서버 감시하기</label>
+            <div class="actions"><button type="submit" class="primary">연결 저장</button><button id="cancel-server" type="button" class="secondary" hidden>수정 취소</button></div>
+          </form>
+        </section>
+      </div>
+    </main>
+  </div>
+  <div id="toast" role="status" class="toast" hidden></div>
+</body>
+</html>

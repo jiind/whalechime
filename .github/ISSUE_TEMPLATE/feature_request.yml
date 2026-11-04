@@ -1,0 +1,17 @@
+name: 기능 제안
+description: 어떤 상황에서 어떤 기능이 필요한지 알려주세요.
+title: "feat: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: 사용 상황과 문제
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 원하는 동작
+    validations:
+      required: true
