@@ -1,25 +1,25 @@
-name: 버그 제보
-description: 예상과 다른 동작을 재현 정보와 함께 알려주세요.
+name: Bug report
+description: Report unexpected behavior with reproduction details.
 title: "fix: "
 labels: [bug]
 body:
   - type: markdown
     attributes:
-      value: "취약점은 SECURITY.md의 비공개 제보를 이용하세요. 키·토큰·실제 로그의 비밀값을 제거해주세요."
+      value: "Report vulnerabilities privately through SECURITY.md. Remove keys, tokens, and sensitive log content."
   - type: textarea
     id: reproduce
     attributes:
-      label: 재현 절차
-      description: OS·앱 버전·Docker 버전·HTTP/HTTPS/mTLS/SSH 연결 방식과 재현 순서를 적어주세요.
+      label: Reproduction steps
+      description: Include your OS, app version, Docker version, connection mode (HTTP/HTTPS/mTLS/SSH), and reproduction steps.
     validations:
       required: true
   - type: textarea
     id: expected
     attributes:
-      label: 기대 동작과 실제 동작
+      label: Expected and actual behavior
     validations:
       required: true
   - type: textarea
     id: evidence
     attributes:
-      label: 비밀정보를 제거한 오류·화면
+      label: Sanitized errors or screenshots

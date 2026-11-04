@@ -1,5 +1,5 @@
-# 설치 방식 변경
+# Installation model change
 
-현재 버전은 PC의 로컬 트레이 앱이 Docker API 또는 SSH로 직접 연결한다. 서버별 에이전트·중앙 서버·PostgreSQL 설치는 필요하지 않다.
+The current app connects directly from the PC using Docker API or SSH. Per-server agents, a central server, and a PostgreSQL service are no longer required.
 
-실행은 [README](../README.md), 서버별 인증·접근 조건은 [연결 안내](connections.md)를 참고한다. 과거 에이전트 설정 파일을 로컬 앱으로 자동 이전하거나 서버의 기존 서비스를 자동 삭제하지 않는다.
+See the [README](../README.md) for startup and [connection settings](connections.md) for authentication and access requirements. Old agent settings are not automatically imported, and existing host services are not automatically removed.

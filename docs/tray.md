@@ -1,29 +1,29 @@
-# 트레이와 컨테이너 로그 보기
+# Tray navigation and container logs
 
-## 사용 흐름
+## User flow
 
-1. `go run ./desktop` 또는 빌드한 `whalechime`을 실행한다.
-2. 트레이의 **설정 → 서버 연결 설정**에서 Docker API 또는 SSH 연결을 추가한다.
-3. 트레이 아이콘을 우클릭하면 등록된 서버 목록이 나온다.
-4. 서버를 펼치면 해당 서버의 컨테이너 하위 메뉴가 옆으로 나온다. 이 단계에서는 창을 열지 않는다.
-5. 컨테이너를 클릭하면 해당 컨테이너의 로그 전용 화면을 연다.
-6. 최근 200줄과 이후 실시간 출력을 추가 조작 없이 창 내부 전체 영역에 표시한다.
+1. Run `go run ./desktop` or the built `whalechime` executable.
+2. Add Docker API or SSH connections through **Settings → Server connections** (`설정 → 서버 연결 설정`).
+3. Right-click the tray icon to see registered servers.
+4. Expand a server to see its containers in a submenu. This step does not open a window.
+5. Select a container to open its dedicated log view.
+6. The last 200 lines and subsequent live output fill the view automatically without additional controls.
 
-웹으로 이동·서버 연결 설정·수신 항목 설정·수신처 설정은 별도 메뉴다. 중앙 서버나 사용자 토큰을 설정하지 않는다. 목록은 15초마다 갱신하며 연결 실패와 빈 컨테이너 목록을 구분한다.
+The dashboard, server connections, event preferences, and notification destinations have separate tray entries. No central server or user token configuration is needed. Inventory refreshes every 15 seconds, distinguishing connection failure from an empty container list.
 
-## 로그 범위
+## Log scope
 
-Docker의 `GET /containers/{id}/logs`를 사용한다. TTY 여부를 확인해 멀티플렉스 헤더와 stdout·stderr를 처리하고 UTF-8 문자를 보존한다. 서버·컨테이너명과 각 줄의 시각을 표시한다. 빈 로그·조회 실패·출력 종료는 구분해서 표시한다.
+Logs use Docker's `GET /containers/{id}/logs`. The app checks TTY mode, handles multiplexing and stdout/stderr, and preserves UTF-8 text. It displays server and container names with each line's timestamp and distinguishes empty logs, failures, and completed output.
 
-선택한 대상은 로컬 앱의 무작위 화면 경로에 고정되며, 화면 안에서 다시 서버나 컨테이너를 선택하지 않는다. 브라우저를 닫거나 연결을 변경·삭제하면 조회를 취소한다. 로그 전체를 로컬 이력 파일에 저장하지 않는다. Docker 로그 드라이버가 API 조회를 제공해야 한다.
+The selected target is fixed to a random local view URL; the viewer does not ask you to select a server or container again. Closing the browser view or editing/removing the connection cancels the upstream request. Full container output is not stored in the local event history. The Docker logging driver must support log retrieval through the API.
 
-## 미리보기와 검증
+## Preview and checks
 
 ```sh
 go run ./desktop -demo
 WHALECHIME_NATIVE_TRAY_TEST=1 dbus-run-session -- go test -race -count=1 -run TestNativeTrayHierarchy -v ./desktop
 ```
 
-미리보기는 매 줄에 미리보기라고 표시한 합성 데이터다. 네이티브 테스트는 독립 DBus 세션에서 실제 메뉴 트리와 클릭 이벤트를 검증하지만 사용자 데스크톱에서의 마우스 우클릭·렌더링 검증과는 구분한다.
+Preview output is synthetic and explicitly labeled as a preview. The native test uses an isolated DBus session to inspect the actual menu tree and click events. It is distinct from manually checking rendering and mouse interaction on a user's desktop.
 
-Linux는 StatusNotifier/AppIndicator 트레이가 필요하다. Windows·macOS의 실제 렌더링과 알림은 해당 플랫폼에서 확인해야 한다.
+Linux requires a StatusNotifier/AppIndicator-compatible tray. Actual Windows/macOS rendering and notifications must be checked on those platforms. macOS release packages contain a `Whalechime.app` bundle; see [release packages](releases.md).

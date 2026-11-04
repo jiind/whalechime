@@ -1,10 +1,11 @@
-# Whalechime 작업 지침
+# Whalechime contributor instructions
 
-- 설명 주석과 문서는 한국어로 작성한다. 모든 명시적 함수·메서드에는 역할을 설명하는 한국어 주석을 작성하고, 여러 처리 단계가 있으면 본문에 번호 단계 주석을 추가한다.
-- Go 표준 라이브러리를 우선 사용하고 `gofmt`, `go vet`, `go test -race ./...`로 검증한다.
-- 개인이 여러 Docker 서버에 직접 연결하는 로컬 트레이 앱이다. 중앙 서버·PostgreSQL·계정·팀·수집 에이전트를 필수 구성으로 추가하지 않는다.
-- 서버마다 HTTP·HTTPS API 또는 SSH를 선택한다. mTLS는 HTTPS에서만 선택하며 HTTPS 서버 인증서 검증과 SSH 호스트 검증은 유지한다.
-- 사용자 알림 설정에 관계없이 Docker가 제공하는 이벤트를 수집한다. 수신 항목과 수신처는 독립적으로 관리하며 이벤트별로 수신 경로를 연결하지 않는다.
-- 설정·이력·발송 대기는 사용자 PC에 보관한다. 자격 증명과 토큰 원문을 로그나 조회 응답에 노출하지 않는다.
-- 트레이의 서버·컨테이너 선택은 하위 메뉴에서 진행하고, 컨테이너 클릭만 별도의 로그 화면을 연다. Docker 제어 API를 추가하지 않는다.
-- 현재 구현 범위와 후속 기능은 `docs/requirements.md`를 기준으로 구분한다.
+- Write public documentation and templates in English. Keep explanatory source comments in Korean. Add a concise Korean role comment above every explicit function or method; use numbered Korean comments for multiple processing stages.
+- Prefer the Go standard library. Validate Go changes with `gofmt`, `go vet`, and `go test -race ./...`.
+- This is a local tray app for one person connecting directly to multiple Docker servers. Do not make a central server, PostgreSQL, accounts, teams, or collection agents required infrastructure.
+- Configure HTTP/HTTPS API or SSH per server. TLS and mTLS are optional; mTLS applies only to HTTPS. Preserve HTTPS server certificate verification and SSH host-key verification.
+- Collect Docker events regardless of notification preferences. Keep event selections independent of notification destinations; do not map individual event types to channels.
+- Store settings, history, and pending deliveries on the user's PC. Never expose raw credentials or tokens in logs or read responses.
+- Keep server and container selection inside tray submenus. Only selecting a container opens its dedicated log view. Do not add Docker control APIs.
+- Use `docs/requirements.md` to distinguish current scope from future work.
+- Release workflows may validate and build packages in pull requests, but publication requires an explicit version tag. Do not create a tag or publish a release unless the user requests it.
