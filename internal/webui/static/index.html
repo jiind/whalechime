@@ -10,25 +10,26 @@
   <script src="/app.js" defer></script>
 </head>
 <body>
+  <a class="skip-link" href="#main-content">본문으로 바로가기</a>
   <div id="app" class="app-shell">
     <aside class="sidebar">
       <a class="brand" href="#overview"><img src="/icon.svg" alt="" width="36" height="36">Whalechime</a>
       <p class="nav-label">WORKSPACE</p>
       <nav aria-label="주 메뉴">
-        <button data-view="overview" class="nav-item active"><span aria-hidden="true">◉</span><span>대시보드</span></button>
-        <button data-view="events" class="nav-item"><span aria-hidden="true">≋</span><span>이벤트 이력</span></button>
-        <button data-view="preferences" class="nav-item"><span aria-hidden="true">☷</span><span>수신 항목</span></button>
-        <button data-view="destinations" class="nav-item"><span aria-hidden="true">↗</span><span>내 수신처</span></button>
-        <button data-view="deliveries" class="nav-item"><span aria-hidden="true">✓</span><span>발송 이력</span></button>
-        <button data-view="servers" class="nav-item"><span aria-hidden="true">⚙</span><span>서버 연결</span></button>
+        <button data-view="overview" class="nav-item active"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span>대시보드</span></button>
+        <button data-view="servers" class="nav-item"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="7" rx="2"/><rect x="3" y="14" width="18" height="7" rx="2"/><path d="M7 6.5h.01M7 17.5h.01"/></svg><span>서버 연결</span></button>
+        <button data-view="events" class="nav-item"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg><span>이벤트 이력</span></button>
+        <button data-view="preferences" class="nav-item"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M9 6h12M9 12h12M9 18h12M3 6h.01M3 12h.01M3 18h.01"/></svg><span>수신 항목</span></button>
+        <button data-view="destinations" class="nav-item"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M21 3 9 15M15 3h6v6M10 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5"/></svg><span>내 수신처</span></button>
+        <button data-view="deliveries" class="nav-item"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="m7 12 3 3 7-7"/><circle cx="12" cy="12" r="9"/></svg><span>발송 이력</span></button>
       </nav>
-      <div class="sidebar-footer"><span>이 PC에서 감시 중<br>앱 종료·절전 중에는 수집이 중단됩니다.</span></div>
+      <div class="sidebar-footer"><span>앱 실행 중에만 수집합니다<br>앱 종료·절전 중에는 수집이 중단됩니다.</span></div>
     </aside>
-    <main>
+    <main id="main-content" tabindex="-1">
       <header class="topbar"><span class="small muted">나의 Docker 모니터</span><span class="status-pill">● 로컬 앱</span></header>
       <div class="content">
-        <div class="page-heading"><div><p class="eyebrow" id="page-kicker">AT A GLANCE</p><h1 id="page-title">대시보드</h1><p class="muted" id="page-description"></p></div><button id="refresh" class="secondary">↻ 새로고침</button></div>
-        <p id="page-error" class="error" role="alert"></p>
+        <div class="page-heading"><div><p class="eyebrow" id="page-kicker">AT A GLANCE</p><h1 id="page-title" tabindex="-1">대시보드</h1><p class="muted" id="page-description"></p></div><button id="refresh" class="secondary">새로고침</button></div>
+        <p id="page-error" tabindex="-1" class="error" role="alert"></p>
         <section id="view-overview" class="view"></section>
         <section id="view-events" class="view" hidden>
           <div class="filter-bar"><label>서버<select id="event-server" aria-label="서버"><option value="">전체 서버</option></select></label><label>이벤트<select id="event-key" aria-label="이벤트"><option value="">전체 이벤트</option></select></label><button id="filter-events" class="secondary">조회</button></div>
@@ -37,6 +38,7 @@
         <section id="view-preferences" class="view" hidden>
           <div class="panel preference-default"><div><h2>미지정 항목도 받기</h2><p class="muted small">개별 설정이 없는 항목과 새로 발견되는 이벤트의 기본 수신 여부입니다.</p></div><label class="switch"><input type="checkbox" id="default-enabled"><span></span><span class="sr-only">미지정 항목도 받기</span></label></div>
           <div class="filter-bar"><label class="grow">항목 검색<input id="preference-search" type="search" placeholder="image.pull, container.stop…"></label><button id="all-on" class="secondary">전체 켜기</button><button id="all-off" class="secondary">전체 끄기</button></div>
+          <p id="preference-draft" class="draft-notice" aria-live="polite" hidden>저장하지 않은 변경사항이 있습니다. 현재 탭에 임시 보관되며, 적용하려면 설정 저장을 눌러주세요.</p>
           <div id="preference-groups"></div>
           <div class="sticky-actions"><span class="small muted">수신 항목은 활성화한 모든 수신처에 공통 적용됩니다.</span><button id="save-preferences" class="primary">설정 저장</button></div>
         </section>
@@ -57,22 +59,22 @@
           <form id="server-form" class="panel form-panel">
             <h2 id="server-form-title">서버 연결 추가</h2>
             <div class="form-grid">
-              <label>서버 이름<input id="server-name" required maxlength="100" placeholder="production-01"></label>
+              <label>서버 이름<input id="server-name" name="name" required maxlength="100" placeholder="production-01"></label>
               <label>연결 방식<select id="server-transport" aria-label="연결 방식"><option value="api">Docker API</option><option value="ssh">SSH</option></select></label>
-              <label>서버 주소<input id="server-address" type="url" required placeholder="http://192.168.1.10:2375"></label>
+              <label>서버 주소<input id="server-address" name="address" type="url" required placeholder="http://192.168.1.10:2375"></label>
             </div>
             <p id="connection-note" class="small muted">HTTP는 전송을 암호화하지 않습니다. 서버의 접근 허용 범위를 확인하세요.</p>
             <div id="tls-fields" hidden>
-              <label>CA 인증서 파일 경로<input id="server-ca" placeholder="비워두면 시스템 인증서 사용"></label>
+              <label>CA 인증서 파일 경로<input id="server-ca" name="ca_file" placeholder="비워두면 시스템 인증서 사용"></label>
               <p class="small muted">HTTPS 서버 인증서는 항상 검증합니다.</p>
-              <label class="checkbox-label"><input id="server-mtls" type="checkbox"> mTLS 사용</label>
+              <label class="checkbox-label"><input id="server-mtls" name="mtls" type="checkbox"> mTLS 사용</label>
               <div id="mtls-fields" class="form-grid" hidden>
-                <label>클라이언트 인증서 파일 경로<input id="server-cert"></label>
-                <label>클라이언트 개인키 파일 경로<input id="server-key"></label>
+                <label>클라이언트 인증서 파일 경로<input id="server-cert" name="cert_file"></label>
+                <label>클라이언트 개인키 파일 경로<input id="server-key" name="key_file"></label>
               </div>
             </div>
             <div id="ssh-fields" hidden>
-              <label>SSH 개인키 파일 경로<input id="server-identity" placeholder="선택 사항: 기존 SSH 설정과 에이전트 재사용"></label>
+              <label>SSH 개인키 파일 경로<input id="server-identity" name="identity_file" placeholder="선택 사항: 기존 SSH 설정과 에이전트 재사용"></label>
               <p class="small muted">ssh://사용자@서버:포트 또는 ssh://SSH별칭을 사용합니다. 기존 known_hosts에 등록된 서버만 연결합니다.</p>
             </div>
             <label class="checkbox-label"><input id="server-enabled" type="checkbox" checked> 이 서버 감시하기</label>

@@ -32,6 +32,17 @@ type Server struct {
 	IdentityFile string `json:"identity_file"`
 }
 
+// ConfigError는 비밀값 없이 수정할 입력 필드와 안내를 전달한다.
+type ConfigError struct {
+	Field   string
+	Message string
+}
+
+// Error는 화면에 표시할 연결 설정 오류를 반환한다.
+func (e *ConfigError) Error() string {
+	return e.Message
+}
+
 var safeHost = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._:-]*$`)
 var readPath = regexp.MustCompile(`^(/v[0-9]+\.[0-9]+)?/(_ping|version|events|containers/json|containers/[a-zA-Z0-9_.-]+/(json|logs))$`)
 
@@ -39,15 +50,15 @@ var readPath = regexp.MustCompile(`^(/v[0-9]+\.[0-9]+)?/(_ping|version|events|co
 func (s Server) Validate() error {
 	// 1. 표시 이름과 API 루트 주소를 확인한다.
 	if strings.TrimSpace(s.Name) == "" || len([]rune(s.Name)) > 100 || strings.ContainsAny(s.Name, "\r\n") {
-		return errors.New("서버 이름은 1~100자로 입력하세요")
+		return &ConfigError{Field: "name", Message: "서버 이름은 1~100자로 입력하세요"}
 	}
 	u, err := url.Parse(s.Address)
 	if err != nil || u.Hostname() == "" || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
-		return errors.New("서버 주소에는 호스트와 포트만 지정하세요")
+		return &ConfigError{Field: "address", Message: "서버 주소에는 호스트와 포트만 지정하세요"}
 	}
 	if port := u.Port(); port != "" {
 		if _, err := net.LookupPort("tcp", port); err != nil {
-			return errors.New("서버 포트를 확인하세요")
+			return &ConfigError{Field: "address", Message: "서버 포트를 확인하세요"}
 		}
 	}
 
@@ -55,28 +66,31 @@ func (s Server) Validate() error {
 	switch u.Scheme {
 	case "http", "https":
 		if u.User != nil || s.IdentityFile != "" {
-			return errors.New("API 주소의 사용자 정보와 SSH 키 설정은 사용할 수 없습니다")
+			return &ConfigError{Field: "address", Message: "API 주소의 사용자 정보와 SSH 키 설정은 사용할 수 없습니다"}
 		}
 		if u.Scheme == "http" && (s.MTLS || s.CAFile != "" || s.CertFile != "" || s.KeyFile != "") {
-			return errors.New("인증서와 mTLS는 HTTPS에서만 사용할 수 있습니다")
+			return &ConfigError{Field: "address", Message: "인증서와 mTLS는 HTTPS에서만 사용할 수 있습니다"}
 		}
-		if s.MTLS && (s.CertFile == "" || s.KeyFile == "") {
-			return errors.New("mTLS에는 클라이언트 인증서와 개인키 파일이 필요합니다")
+		if s.MTLS && s.CertFile == "" {
+			return &ConfigError{Field: "cert_file", Message: "mTLS에는 클라이언트 인증서 파일이 필요합니다"}
+		}
+		if s.MTLS && s.KeyFile == "" {
+			return &ConfigError{Field: "key_file", Message: "mTLS에는 클라이언트 개인키 파일이 필요합니다"}
 		}
 		if !s.MTLS && (s.CertFile != "" || s.KeyFile != "") {
-			return errors.New("클라이언트 인증서를 사용하려면 mTLS를 켜세요")
+			return &ConfigError{Field: "mtls", Message: "클라이언트 인증서를 사용하려면 mTLS를 켜세요"}
 		}
 	case "ssh":
 		if !safeHost.MatchString(u.Hostname()) || s.MTLS || s.CAFile != "" || s.CertFile != "" || s.KeyFile != "" {
-			return errors.New("SSH 호스트와 연결 설정을 확인하세요")
+			return &ConfigError{Field: "address", Message: "SSH 호스트와 연결 설정을 확인하세요"}
 		}
 		if u.User != nil {
 			if _, exists := u.User.Password(); exists || !safeHost.MatchString(u.User.Username()) {
-				return errors.New("SSH에는 비밀번호 없이 사용자 이름만 지정하세요")
+				return &ConfigError{Field: "address", Message: "SSH에는 비밀번호 없이 사용자 이름만 지정하세요"}
 			}
 		}
 	default:
-		return errors.New("http://, https:// 또는 ssh:// 주소를 사용하세요")
+		return &ConfigError{Field: "address", Message: "http://, https:// 또는 ssh:// 주소를 사용하세요"}
 	}
 	return nil
 }
@@ -94,20 +108,28 @@ func New(s Server) (*client.Client, error) {
 		if s.CAFile != "" {
 			pem, err := os.ReadFile(s.CAFile)
 			if err != nil {
-				return nil, errors.New("CA 인증서 파일을 읽을 수 없습니다")
+				return nil, &ConfigError{Field: "ca_file", Message: "CA 인증서 파일을 읽을 수 없습니다"}
 			}
 			config.RootCAs, _ = x509.SystemCertPool()
 			if config.RootCAs == nil {
 				config.RootCAs = x509.NewCertPool()
 			}
 			if !config.RootCAs.AppendCertsFromPEM(pem) {
-				return nil, errors.New("CA 인증서 형식을 확인하세요")
+				return nil, &ConfigError{Field: "ca_file", Message: "CA 인증서 형식을 확인하세요"}
 			}
 		}
 		if s.MTLS {
-			cert, err := tls.LoadX509KeyPair(s.CertFile, s.KeyFile)
+			certPEM, err := os.ReadFile(s.CertFile)
 			if err != nil {
-				return nil, errors.New("클라이언트 인증서와 개인키 파일을 확인하세요")
+				return nil, &ConfigError{Field: "cert_file", Message: "클라이언트 인증서 파일을 읽을 수 없습니다"}
+			}
+			keyPEM, err := os.ReadFile(s.KeyFile)
+			if err != nil {
+				return nil, &ConfigError{Field: "key_file", Message: "클라이언트 개인키 파일을 읽을 수 없습니다"}
+			}
+			cert, err := tls.X509KeyPair(certPEM, keyPEM)
+			if err != nil {
+				return nil, &ConfigError{Field: "cert_file", Message: "클라이언트 인증서와 개인키 파일을 확인하세요"}
 			}
 			config.Certificates = []tls.Certificate{cert}
 		}

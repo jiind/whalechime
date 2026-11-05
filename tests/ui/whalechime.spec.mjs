@@ -120,3 +120,136 @@ test("모바일에서 로그인 입력 없이 로컬 서버 연결 설정을 연
   await expect(page.getByRole("textbox", { name: "접속 토큰" })).toHaveCount(0);
   await expect(page.locator("body")).toHaveJSProperty("scrollWidth", 390);
 });
+
+test("첫 서버 추가와 모바일 메뉴가 보이며 뒤로가기·앞으로가기가 화면을 복구한다", async ({ page }) => {
+  // 1. 첫 실행에서 가로 스크롤 없이 연결 추가로 이동한다.
+  await page.setViewportSize({ width: 375, height: 812 });
+  await login(page);
+  const add = page.getByRole("button", { name: "서버 연결 추가", exact: true });
+  await expect(add).toBeInViewport();
+  for (const button of await page.getByRole("navigation").getByRole("button").all()) {
+    await expect(button).toBeInViewport();
+  }
+  await add.click();
+  await expect(page.getByLabel("서버 이름", { exact: true })).toBeFocused();
+  await expect(page.getByRole("button", { name: "서버 연결", exact: true })).toHaveAttribute("aria-current", "page");
+
+  // 2. 브라우저 방문 기록이 앱 안의 이전·다음 화면을 복원한다.
+  await page.getByRole("button", { name: "수신 항목", exact: true }).click();
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "서버 연결", exact: true })).toBeFocused();
+  await page.goBack();
+  await expect(page.getByRole("heading", { name: "대시보드", exact: true })).toBeFocused();
+  await page.goForward();
+  await expect(page.getByRole("heading", { name: "서버 연결", exact: true })).toBeFocused();
+  await expect(page).toHaveTitle("서버 연결 · Whalechime");
+});
+
+test("미저장 수신 설정은 화면 이동·조회·새로고침 뒤에도 보존하고 명시적으로 저장한다", async ({ page }) => {
+  // 1. 아직 저장하지 않은 선택을 다른 화면에 다녀와도 유지한다.
+  await login(page);
+  await page.getByRole("button", { name: "수신 항목", exact: true }).click();
+  const toggle = page.getByRole("checkbox", { name: "container.oom", exact: true });
+  const before = await toggle.isChecked();
+  await toggle.setChecked(!before);
+  await expect(page.locator("#preference-draft")).toBeVisible();
+  await page.getByRole("button", { name: "대시보드", exact: true }).click();
+  await page.getByRole("button", { name: "수신 항목", exact: true }).click();
+  await expect(toggle).toBeChecked({ checked: !before });
+  await page.getByRole("button", { name: "새로고침" }).click();
+  await expect(toggle).toBeChecked({ checked: !before });
+  await page.reload();
+  await expect(toggle).toBeChecked({ checked: !before });
+  await expect(page.locator("#preference-draft")).toBeVisible();
+
+  // 2. 설정 저장을 누른 뒤에만 임시 상태를 해제하고 영구 저장을 확인한다.
+  await page.getByRole("button", { name: "설정 저장" }).click();
+  await expect(page.locator("#preference-draft")).toBeHidden();
+  await expect(page.getByRole("status")).toContainText("수신 항목을 저장했습니다");
+  await page.reload();
+  await expect(toggle).toBeChecked({ checked: !before });
+  await expect(page.locator("#preference-draft")).toBeHidden();
+});
+
+test("저장 처리 중의 추가 변경을 이전 응답으로 지우지 않는다", async ({ page }) => {
+  // 1. 저장 요청의 응답만 지연시켜 처리 중 추가 변경을 재현한다.
+  await login(page);
+  await page.getByRole("button", { name: "수신 항목", exact: true }).click();
+  const toggle = page.getByRole("checkbox", { name: "container.oom", exact: true });
+  const before = await toggle.isChecked();
+  await toggle.setChecked(!before);
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  let received;
+  const saving = new Promise((resolve) => {
+    received = resolve;
+  });
+  await page.route("**/api/me/preferences", async (route) => {
+    if (route.request().method() === "PUT") {
+      const response = await route.fetch();
+      received();
+      await gate;
+      await route.fulfill({ response });
+    } else {
+      await route.continue();
+    }
+  });
+  await page.getByRole("button", { name: "설정 저장" }).click();
+  await saving;
+  await toggle.setChecked(before);
+  release();
+
+  // 2. 이후 변경은 초안으로 남기고 재저장 후에만 해제한다.
+  await expect(page.getByRole("status")).toContainText("이후 변경사항");
+  await expect(page.locator("#preference-draft")).toBeVisible();
+  await page.reload();
+  await expect(toggle).toBeChecked({ checked: before });
+  await expect(page.locator("#preference-draft")).toBeVisible();
+  await page.unroute("**/api/me/preferences");
+  await page.getByRole("button", { name: "설정 저장" }).click();
+  await expect(page.locator("#preference-draft")).toBeHidden();
+});
+
+test("모바일 저장 오류를 해당 입력에 연결하고 긴 주소와 감시 꺼짐을 정확히 표시한다", async ({ page }) => {
+  // 1. 실제 API의 인증서 검증 오류가 해당 필드로 초점을 이동시킨다.
+  await page.setViewportSize({ width: 375, height: 812 });
+  await login(page, "#servers");
+  const name = `긴 주소 검증 ${Date.now()}`;
+  await page.getByLabel("서버 이름", { exact: true }).fill(name);
+  await page.getByLabel("서버 주소", { exact: true }).fill("https://127.0.0.1:1");
+  const ca = page.locator("#server-ca");
+  await ca.fill("/tmp/whalechime-missing-ca.pem");
+  await page.getByLabel("이 서버 감시하기").uncheck();
+  await page.getByRole("button", { name: "연결 저장", exact: true }).click();
+  await expect(ca).toBeFocused();
+  await expect(ca).toHaveAttribute("aria-invalid", "true");
+  await expect(ca).toHaveAttribute("aria-describedby", "server-ca-error");
+  await expect(ca).toHaveAccessibleName("CA 인증서 파일 경로");
+  await expect(page.locator("#server-ca-error")).toContainText("CA 인증서 파일을 읽을 수 없습니다");
+  await expect(page.locator("#server-ca-error")).toBeInViewport();
+
+  // 2. HTTP로 수정하면 인증서 없이 저장되고 긴 주소도 카드 안에서 줄바꿈된다.
+  const address = `http://review-server-${"a".repeat(40)}.example.review-server-${"b".repeat(40)}.example:2375`;
+  await page.getByLabel("서버 주소", { exact: true }).fill(address);
+  await page.getByRole("button", { name: "연결 저장", exact: true }).click();
+  const card = page.locator(".server-card").filter({ has: page.getByRole("heading", { name, exact: true }) });
+  await expect(card).toContainText(address);
+  await expect(card).toContainText("감시 꺼짐");
+  await expect(ca).not.toHaveAttribute("aria-invalid", "true");
+  for (const width of [375, 768, 1024, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(page.locator("body")).toHaveJSProperty("scrollWidth", width);
+  }
+
+  // 3. 비활성 서버를 연결 중으로 집계하지 않고 검증용 연결만 제거한다.
+  await page.getByRole("button", { name: "대시보드", exact: true }).click();
+  const stat = page.locator(".stat").filter({ hasText: "등록된 서버" });
+  await expect(stat.locator("strong")).toHaveText("1");
+  await expect(stat).toContainText("0대 감시 켜짐 · 1대 감시 꺼짐");
+  await page.getByRole("button", { name: "서버 연결", exact: true }).click();
+  page.once("dialog", (dialog) => dialog.accept());
+  await card.getByRole("button", { name: "연결 삭제", exact: true }).click();
+  await expect(card).toHaveCount(0);
+});

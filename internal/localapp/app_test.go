@@ -322,3 +322,37 @@ func TestRetryAndRevokedDestination(t *testing.T) {
 	}
 	t.Fatal("대기 중 해제된 수신처를 취소하지 못했습니다")
 }
+
+// TestServerFieldErrors는 저장 오류의 입력 위치를 전달하고 잘못된 연결을 저장하지 않는다.
+func TestServerFieldErrors(t *testing.T) {
+	// 1. 주소와 인증서 오류를 실제 저장 API로 요청한다.
+	a := testApp(t)
+	for _, tc := range []struct {
+		name   string
+		server dockerconn.Server
+		field  string
+	}{
+		{"address", dockerconn.Server{Name: "잘못된 주소", Address: "ftp://docker.example"}, "address"},
+		{"key", dockerconn.Server{Name: "없는 개인키", Address: "https://127.0.0.1:1", MTLS: true, CertFile: "client.pem"}, "key_file"},
+		{"ca", dockerconn.Server{Name: "없는 CA", Address: "https://127.0.0.1:1", CAFile: filepath.Join(t.TempDir(), "private-ca.pem")}, "ca_file"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := call(t, a, http.MethodPost, "/api/servers", tc.server, http.StatusBadRequest)
+			var response struct {
+				Error string `json:"error"`
+				Field string `json:"field"`
+			}
+			if err := json.Unmarshal(body, &response); err != nil {
+				t.Fatal(err)
+			}
+			if response.Field != tc.field || response.Error == "" || strings.Contains(string(body), "private-ca.pem") {
+				t.Fatalf("입력 오류 안내가 올바르지 않습니다: %s", body)
+			}
+		})
+	}
+
+	// 2. 실패한 연결은 목록과 감시 작업에 추가하지 않는다.
+	if got := string(call(t, a, http.MethodGet, "/api/servers", nil, http.StatusOK)); got != "[]\n" {
+		t.Fatalf("저장 실패 후 서버가 추가되었습니다: %s", got)
+	}
+}
