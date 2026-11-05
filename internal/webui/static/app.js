@@ -1,7 +1,8 @@
 "use strict";
 
+// $는 첫 번째 일치 요소를 조회한다.
 const $ = (selector) => document.querySelector(selector);
-const state = { view: "overview", preferences: new Map(), keys: [], defaultEnabled: false, destinations: [], editID: null, servers: [], serverEditID: null };
+const state = { view: "overview", preferencesDirty: false, preferenceRevision: 0, preferences: new Map(), keys: [], defaultEnabled: false, destinations: [], editID: null, servers: [], serverEditID: null };
 const labels = { desktop: "이 PC 알림", email: "이메일", slack: "Slack", teams: "Microsoft Teams", discord: "Discord", telegram: "Telegram", "google-chat": "Google Chat", mattermost: "Mattermost", ntfy: "ntfy", gotify: "Gotify", pushover: "Pushover", webhook: "사용자 정의 Webhook" };
 const groupLabels = { container: "컨테이너", image: "이미지", network: "네트워크", volume: "볼륨", daemon: "Docker 데몬", plugin: "플러그인", service: "Swarm 서비스", node: "Swarm 노드", secret: "시크릿", config: "설정", server: "서버 연결" };
 const statusLabels = { sent: "발송 완료", pending: "재시도 대기", processing: "발송 중", failed: "발송 실패", cancelled: "발송 취소" };
@@ -36,28 +37,92 @@ async function request(path, method = "GET", body) {
 
   // 2. API가 제공한 사용자용 오류만 화면에 표시한다.
   if (!response.ok) {
-    throw new Error(data?.error || "요청을 처리하지 못했습니다.");
+    const error = new Error(data?.error || "요청을 처리하지 못했습니다.");
+    error.field = data?.field;
+    throw error;
   }
   return data;
 }
 
-// on은 사용자 동작의 실패를 해당 화면에 표시하고 중복 클릭을 막는다.
+// clearErrors는 해당 폼의 입력 오류와 보조 설명 연결을 초기화한다.
+function clearErrors(root = document) {
+  // 1. 기존 보조 설명은 유지하고 오류 설명만 제거한다.
+  for (const input of root.querySelectorAll('[aria-invalid="true"]')) {
+    const descriptions = (input.getAttribute("aria-describedby") || "").split(" ").filter((id) => id && id !== `${input.id}-error`);
+    input.removeAttribute("aria-invalid");
+    if (descriptions.length) {
+      input.setAttribute("aria-describedby", descriptions.join(" "));
+    } else {
+      input.removeAttribute("aria-describedby");
+    }
+  }
+
+  // 2. 오류 안내를 제거해 다시 제출할 수 있게 한다.
+  for (const node of root.querySelectorAll(".field-error, .form-error")) {
+    node.remove();
+  }
+}
+
+// showError는 폼 안의 오류 요약과 해당 입력을 연결하고 초점을 이동한다.
+function showError(error, origin) {
+  // 1. 저장 오류는 제출한 폼 가까이에 표시한다.
+  const form = origin?.closest("form");
+  let summary = $("#page-error");
+  if (form) {
+    summary = form.querySelector(".form-error");
+    if (!summary) {
+      summary = element("p", "error form-error");
+      summary.setAttribute("role", "alert");
+      summary.tabIndex = -1;
+      form.querySelector("h2").after(summary);
+    }
+  }
+  summary.textContent = error.message;
+
+  // 2. 필드 오류는 기존 도움말을 유지하며 직접 수정할 입력에 연결한다.
+  const input = form && [...form.elements].find((node) => node.name === error.field && node.getClientRects().length);
+  if (input) {
+    const detail = element("span", "field-error", error.message);
+    detail.id = `${input.id}-error`;
+    if (!input.hasAttribute("aria-label")) {
+      input.setAttribute("aria-label", input.labels[0].firstChild.textContent.trim());
+    }
+    input.after(detail);
+    input.setAttribute("aria-invalid", "true");
+    input.setAttribute("aria-describedby", [input.getAttribute("aria-describedby"), detail.id].filter(Boolean).join(" "));
+  }
+  const target = input || summary;
+  target.focus({ preventScroll: true });
+  target.scrollIntoView({ block: "center" });
+}
+
+// on은 사용자 동작의 실패를 가까이에 표시하고 중복 실행을 막는다.
 function on(target, event, action) {
   const node = typeof target === "string" ? $(target) : target;
   node.addEventListener(event, async (e) => {
+    // 1. 실행 버튼과 폼의 진행 상태를 표시한다.
     e.preventDefault();
     const button = e.submitter || (node.tagName === "BUTTON" ? node : null);
+    const focused = document.activeElement === button;
     if (button) {
       button.disabled = true;
+      button.setAttribute("aria-busy", "true");
     }
+    clearErrors(node.closest("form") || node);
     $("#page-error").textContent = "";
+
+    // 2. 실패 위치를 안내하고 실행 후 키보드 초점을 복구한다.
     try {
       await action(e);
     } catch (error) {
-      $("#page-error").textContent = error.message;
+      showError(error, node);
     } finally {
       if (button) {
         button.disabled = false;
+        button.removeAttribute("aria-busy");
+        if (focused && button.isConnected && document.activeElement === document.body) {
+          button.focus();
+        }
       }
     }
   });
@@ -75,24 +140,37 @@ function toast(message) {
 }
 
 // navigate는 화면을 전환하고 해당 업무의 최신 데이터를 불러온다.
-async function navigate(view) {
+async function navigate(view, historyMode = "push") {
   // 1. 선택한 로컬 화면을 확인한다.
   if (!pages[view]) {
     return;
   }
   state.view = view;
-  history.replaceState(null, "", `#${view}`);
+  if (historyMode === "replace") {
+    history.replaceState(null, "", `#${view}`);
+  } else if (historyMode === "push" && location.hash !== `#${view}`) {
+    history.pushState(null, "", `#${view}`);
+  }
   $("#page-error").textContent = "";
   for (const node of document.querySelectorAll(".view")) {
     node.hidden = node.id !== `view-${view}`;
   }
   for (const node of document.querySelectorAll("[data-view]")) {
-    node.classList.toggle("active", node.dataset.view === view);
+    const current = node.dataset.view === view;
+    node.classList.toggle("active", current);
+    if (current) {
+      node.setAttribute("aria-current", "page");
+    } else {
+      node.removeAttribute("aria-current");
+    }
   }
   const [kicker, title, description] = pages[view];
   $("#page-kicker").textContent = kicker;
   $("#page-title").textContent = title;
   $("#page-description").textContent = description;
+  document.title = `${title} · Whalechime`;
+  $("#page-title").focus({ preventScroll: true });
+  window.scrollTo({ top: 0 });
 
   // 2. 화면 종류에 맞는 API를 조회한다.
   await refresh();
@@ -189,7 +267,7 @@ async function overview() {
   const root = $("#view-overview");
   root.replaceChildren();
   const stats = element("div", "stats");
-  for (const [title, count, hint] of [["연결된 서버", servers.length, "이 PC에 등록한 Docker 서버"], ["활성 수신처", destinations.filter((d) => d.enabled).length, "알림이 도착하는 곳"], ["최근 이벤트", events.length, "최근 수집 이력"]]) {
+  for (const [title, count, hint] of [["등록된 서버", servers.length, `${servers.filter((s) => s.enabled).length}대 감시 켜짐 · ${servers.filter((s) => !s.enabled).length}대 감시 꺼짐`], ["활성 수신처", destinations.filter((d) => d.enabled).length, "알림이 도착하는 곳"], ["최근 이벤트", events.length, "최근 수집 이력"]]) {
     const card = element("div", "stat");
     card.append(element("span", "muted small", title), element("strong", "", count), element("small", "", hint));
     stats.append(card);
@@ -198,9 +276,17 @@ async function overview() {
 
   // 2. 연결 상태와 최근 이벤트를 실제 조회 결과로 표시한다.
   if (servers.length) {
-    root.append(table(["서버", "연결 방식", "상태"], servers.map((s) => [s.name, s.address.startsWith("ssh:") ? "SSH" : s.address.startsWith("https:") ? (s.mtls ? "HTTPS · mTLS" : "HTTPS") : "HTTP", s.status])));
+    root.append(table(["서버", "연결 방식", "상태"], servers.map((s) => [s.name, s.address.startsWith("ssh:") ? "SSH" : s.address.startsWith("https:") ? (s.mtls ? "HTTPS · mTLS" : "HTTPS") : "HTTP", serverStatus(s)])));
   } else {
-    root.append(empty("연결된 서버가 없습니다. 서버 연결 메뉴에서 첫 서버를 추가하세요."));
+    const setup = empty("");
+    setup.append(element("h2", "", "첫 Docker 서버를 연결하세요"), element("p", "", "HTTP·HTTPS API 또는 기존 SSH 연결로 시작할 수 있습니다."));
+    const add = element("button", "primary", "서버 연결 추가");
+    on(add, "click", async () => {
+      await navigate("servers");
+      $("#server-name").focus();
+    });
+    setup.append(add);
+    root.append(setup);
   }
   root.append(element("h2", "section-heading", "최근 Docker 이벤트"), eventTable(events));
 }
@@ -236,9 +322,14 @@ async function loadEvents(updateFilters) {
 
 // loadPreferences는 개인 기본값과 명시적인 항목 선택을 불러온다.
 async function loadPreferences() {
+  // 1. 미저장 변경은 조회 결과로 덮어쓰지 않는다.
   const [prefs, keys] = await Promise.all([request("/api/me/preferences"), request("/api/event-types")]);
-  state.defaultEnabled = prefs.default_enabled;
-  state.preferences = new Map(prefs.items.map((item) => [item.event_key, item.enabled]));
+  if (!state.preferencesDirty) {
+    state.defaultEnabled = prefs.default_enabled;
+    state.preferences = new Map(prefs.items.map((item) => [item.event_key, item.enabled]));
+  }
+
+  // 2. 최신 항목 목록에도 현재 탭의 선택을 유지한다.
   state.keys = keys;
   $("#default-enabled").checked = state.defaultEnabled;
   renderPreferences();
@@ -270,7 +361,10 @@ function renderPreferences() {
       toggle.type = "checkbox";
       toggle.checked = state.preferences.has(key) ? state.preferences.get(key) : state.defaultEnabled;
       toggle.setAttribute("aria-label", key);
-      toggle.addEventListener("change", () => state.preferences.set(key, toggle.checked));
+      toggle.addEventListener("change", () => {
+        state.preferences.set(key, toggle.checked);
+        markPreferencesDirty();
+      });
       label.append(document.createTextNode(key), toggle);
       items.append(label);
     }
@@ -287,7 +381,38 @@ function changeAll(enabled) {
   for (const key of state.keys) {
     state.preferences.set(key, enabled);
   }
+  markPreferencesDirty();
   renderPreferences();
+}
+
+// markPreferencesDirty는 비밀값 없는 선택 초안을 현재 탭에만 보존한다.
+function markPreferencesDirty() {
+  // 1. 열린 화면의 초안 상태와 저장 이후 변경 여부를 기록한다.
+  state.preferencesDirty = true;
+  state.preferenceRevision += 1;
+  $("#preference-draft").hidden = false;
+
+  // 2. 새로고침에도 복구하되 실제 알림 설정에는 아직 적용하지 않는다.
+  try {
+    sessionStorage.setItem("whalechime.preferences.draft", JSON.stringify({ default_enabled: state.defaultEnabled, items: [...state.preferences] }));
+  } catch {
+    // 저장소가 차단되어도 열린 화면 사이에서는 초안을 유지한다.
+  }
+}
+
+// restorePreferencesDraft는 새로고침 후 유효한 현재 탭의 선택만 복구한다.
+function restorePreferencesDraft() {
+  try {
+    const draft = JSON.parse(sessionStorage.getItem("whalechime.preferences.draft"));
+    if (draft && typeof draft.default_enabled === "boolean" && Array.isArray(draft.items) && draft.items.length <= 1000 && draft.items.every((item) => Array.isArray(item) && item.length === 2 && typeof item[0] === "string" && typeof item[1] === "boolean")) {
+      state.defaultEnabled = draft.default_enabled;
+      state.preferences = new Map(draft.items);
+      state.preferencesDirty = true;
+      $("#preference-draft").hidden = false;
+    }
+  } catch {
+    // 손상된 초안은 무시하고 저장된 설정을 사용한다.
+  }
 }
 
 // destinationFields는 선택한 서비스에 필요한 연결 입력만 표시한다.
@@ -316,6 +441,7 @@ function destinationFields() {
 // resetDestination은 입력한 비밀값을 지우고 추가 폼으로 돌아간다.
 function resetDestination() {
   state.editID = null;
+  clearErrors($("#destination-form"));
   $("#destination-form").reset();
   $("#destination-form-title").textContent = "수신처 추가";
   $("#cancel-destination").hidden = true;
@@ -402,14 +528,25 @@ function bind() {
   // 2. 개인 수신 항목과 수신처를 독립적으로 저장한다.
   on("#default-enabled", "change", () => {
     state.defaultEnabled = $("#default-enabled").checked;
+    markPreferencesDirty();
     renderPreferences();
   });
   on("#preference-search", "input", renderPreferences);
   on("#all-on", "click", () => changeAll(true));
   on("#all-off", "click", () => changeAll(false));
   on("#save-preferences", "click", async () => {
+    const revision = state.preferenceRevision;
     await request("/api/me/preferences", "PUT", { default_enabled: state.defaultEnabled, items: [...state.preferences].map(([event_key, enabled]) => ({ event_key, enabled })) });
-    toast("수신 항목을 저장했습니다.");
+    if (revision === state.preferenceRevision) {
+      state.preferencesDirty = false;
+      $("#preference-draft").hidden = true;
+      try {
+        sessionStorage.removeItem("whalechime.preferences.draft");
+      } catch {
+        // 저장소 차단은 이미 완료된 설정 저장에 영향을 주지 않는다.
+      }
+    }
+    toast(state.preferencesDirty ? "저장을 완료했습니다. 이후 변경사항은 설정 저장을 눌러주세요." : "수신 항목을 저장했습니다.");
   });
   on("#destination-kind", "change", destinationFields);
   on("#cancel-destination", "click", resetDestination);
@@ -459,7 +596,9 @@ function serverInput() {
   const ssh = $("#server-transport").value === "ssh";
   const address = $("#server-address").value.trim();
   if ((ssh && !address.startsWith("ssh://")) || (!ssh && !/^https?:\/\//.test(address))) {
-    throw new Error("선택한 연결 방식과 서버 주소를 맞춰주세요.");
+    const error = new Error("선택한 연결 방식과 서버 주소를 맞춰주세요.");
+    error.field = "address";
+    throw error;
   }
   const tls = !ssh && address.startsWith("https://");
   const mtls = tls && $("#server-mtls").checked;
@@ -469,6 +608,7 @@ function serverInput() {
 // resetServer는 이전 인증서 경로를 새 서버에 복사하지 않도록 폼을 초기화한다.
 function resetServer() {
   state.serverEditID = null;
+  clearErrors($("#server-form"));
   $("#server-form").reset();
   $("#server-form-title").textContent = "서버 연결 추가";
   $("#cancel-server").hidden = true;
@@ -483,7 +623,7 @@ async function loadServers() {
   root.replaceChildren();
   for (const s of state.servers) {
     const card = element("article", "panel server-card");
-    card.append(element("h2", "", s.name), element("p", "small", s.address), element("p", "muted small", s.status));
+    card.append(element("h2", "", s.name), element("p", "small", s.address), serverStatus(s));
     const actions = element("div", "actions");
     const test = element("button", "secondary", "연결 확인");
     on(test, "click", async () => {
@@ -527,13 +667,18 @@ async function loadServers() {
   }
 }
 
+// serverStatus는 실제 감시 상태를 텍스트와 색상으로 함께 표시한다.
+function serverStatus(server) {
+  const status = server.enabled ? server.status : "감시 꺼짐";
+  const kind = !server.enabled ? "inactive" : status === "수집 중" ? "sent" : /끊김|실패|확인/.test(status) ? "failed" : "pending";
+  return element("span", `badge ${kind}`, status);
+}
+
+restorePreferencesDraft();
 bind();
 connectionFields();
+on(".skip-link", "click", () => $("#main-content").focus());
 window.addEventListener("hashchange", () => {
-  navigate(location.hash.slice(1)).catch((error) => {
-    $("#page-error").textContent = error.message;
-  });
+  navigate(location.hash.slice(1), "none").catch((error) => showError(error));
 });
-navigate(pages[location.hash.slice(1)] ? location.hash.slice(1) : "overview").catch((error) => {
-  $("#page-error").textContent = error.message;
-});
+navigate(pages[location.hash.slice(1)] ? location.hash.slice(1) : "overview", "replace").catch((error) => showError(error));

@@ -104,6 +104,11 @@ func (a *App) saveServer(w http.ResponseWriter, r *http.Request) {
 	}
 	docker, err := dockerconn.New(s)
 	if err != nil {
+		var configError *dockerconn.ConfigError
+		if errors.As(err, &configError) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": configError.Message, "field": configError.Field})
+			return
+		}
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
